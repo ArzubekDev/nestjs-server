@@ -1,21 +1,19 @@
-import { Body, Controller, Get, Post, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { CreateAuthDto } from './dto/auth.dto';
 import { AuthGuard } from 'src/guards/auth.guard';
+import { RolesGuard } from 'src/guards/roles.guard';
+import { Roles } from 'src/common/roles.decorators';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Get()
-  @UseGuards(AuthGuard)
-  findAll() {
-    return this.authService.findAll();
-  }
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('ADMIN')
+@Get('/admin-panel')
+getAdminPanel() {
+  return "Welcome Admin!";
+}
 
-  // @Post()
-  // @UsePipes(new ValidationPipe({ whitelist: true }))
-  // create(@Body() dto: CreateAuthDto) {
-  //   return this.authService.create(dto);
-  // }
+
 }
