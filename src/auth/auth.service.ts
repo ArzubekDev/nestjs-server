@@ -23,7 +23,8 @@ export class AuthService {
     role: Role = Role.USER,
   ) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) throw new BadRequestException('User already exists');
+    if (existing)
+      throw new BadRequestException('Пользователь уже существует!!!');
 
     const hashed = await bcrypt.hash(password, 10);
 
@@ -32,15 +33,18 @@ export class AuthService {
     });
 
     const token = this.jwtService.generateToken(user.id, user.email, user.role);
-    return { user, token };
+
+    const { password: _, ...userData } = user;
+
+    return { user: userData, token };
   }
 
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (!user) throw new UnauthorizedException('Неверные учетные данные!!!');
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) throw new UnauthorizedException('Invalid credentials');
+    if (!match) throw new UnauthorizedException('Неверные учетные данные!!!');
 
     const token = this.jwtService.generateToken(user.id, user.email, user.role);
     return { user, token };
@@ -50,10 +54,11 @@ export class AuthService {
     const currentUser = await this.prisma.user.findUnique({
       where: { id: currentUserId },
     });
-    if (!currentUser) throw new UnauthorizedException('Current user not found');
+    if (!currentUser)
+      throw new UnauthorizedException('Текущий пользователь не найден!!!');
 
-    if (dto.role === Role.OWNER && currentUser.role !== Role.OWNER) {
-      throw new ForbiddenException('Only OWNER can assign OWNER role');
+    if (currentUser.role !== Role.OWNER) {
+      throw new ForbiddenException('Только ВЛАДЕЛЕЦ может назначать роли!');
     }
 
     const updatedUser = await this.prisma.user.update({

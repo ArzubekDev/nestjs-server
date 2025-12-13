@@ -11,7 +11,7 @@ model User {
   name      String
   email     String    @unique
   password  String
-  level     String    @default("Bronze") 
+  level     String    @default("Bronze") // Bronze,Silver,Gold,Platinum,Arena Champion (TOP — Mythic-level)
   accounts  Account[]
   sessions  Session[]
   points    Points[]
