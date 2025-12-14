@@ -3,11 +3,16 @@ import {
   BadRequestException,
   UnauthorizedException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtPayload, JwtService } from 'src/config/jwt.service';
-import { Role } from '@prisma/client';
+import { AuthMethod, Role } from '@prisma/client';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { Request, Response } from 'express';
+import { resolve } from 'path';
 
 @Injectable()
 export class AuthService {
@@ -16,41 +21,60 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(
-    email: string,
-    password: string,
-    name: string,
-    role: Role = Role.USER,
-  ) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing)
-      throw new BadRequestException('Пользователь уже существует!!!');
+public async register(dto: RegisterDto, role: Role = Role.USER) {
 
-    const hashed = await bcrypt.hash(password, 10);
+  const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+  if (existing)
+    throw new BadRequestException('Пользователь уже существует!!!');
 
-    const user = await this.prisma.user.create({
-      data: { email, password: hashed, role, name },
-    });
+  const hashed = await bcrypt.hash(dto.password, 10);
 
-    const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-    const { password: _, ...userData } = user;
+  const newUser = await this.prisma.user.create({
+    data: {
+      email: dto.email,
+      password: hashed,
+      name: dto.name,
+      method: AuthMethod.CREDENTIALS,
+      picture: "",
+      isVerified: false,
+      role: role
+    }
+  });
 
-    return { user: userData, token };
-  }
+  // JWT токен түзүү
+  const token = this.jwtService.generateToken(newUser.id, newUser.email, newUser.role);
 
-  async login(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  // Парольди чыгарып, колдонуучу маалыматтарын кайтаруу
+  const { password: _, ...userData } = newUser;
+
+  return { user: userData, token };
+}
+
+
+public async login(dto: LoginDto) {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (!user) throw new UnauthorizedException('Неверные учетные данные!!!');
 
-    const match = await bcrypt.compare(password, user.password);
+    const match = await bcrypt.compare(dto.password, user.password);
     if (!match) throw new UnauthorizedException('Неверные учетные данные!!!');
 
     const token = this.jwtService.generateToken(user.id, user.email, user.role);
     return { user, token };
   }
 
-  async assignRole(dto: { userId: string; role: Role }, currentUserId: string) {
+  public async logOut(res: Response) {
+    res.clearCookie('jwt', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+
+    return { message: 'Пользователь успешно вышел' };
+  }
+
+
+public async assignRole(dto: { userId: string; role: Role }, currentUserId: string) {
     const currentUser = await this.prisma.user.findUnique({
       where: { id: currentUserId },
     });
