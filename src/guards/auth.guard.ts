@@ -33,7 +33,7 @@ export class AuthGuard implements CanActivate {
     }
 
     const user = await this.userService.findById(payload.id);
-    request.user = user; // 👈 МААНИЛҮҮ
+    request.user = user; 
 
     return true;
   }
