@@ -4,18 +4,27 @@ import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix("api")
-  app.useGlobalFilters({
-  catch(exception: any, host: any) {
-    console.error("PRISMA ERROR:", exception);
-  }
-});
-  // ✅ ValidationPipe глобалдуу колдонуу
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,  // DTOда жок талааларды чыгарып салат
-    forbidNonWhitelisted: true, // DTOда жок талаа болсо катасын чыгарат
-    transform: true, // Авто-типтерди конверттейт
-  }));
-  await app.listen(process.env.PORT ?? 3000);
+
+  app.setGlobalPrefix('api');
+
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'https://devarena-neon.vercel.app',
+    ],
+    credentials: true,
+  });
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port, '0.0.0.0');
 }
 bootstrap();
+
