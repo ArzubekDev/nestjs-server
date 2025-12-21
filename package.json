@@ -6,12 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
- "prebuild": "yarn install --frozen-lockfile",
-  "build": "node_modules/.bin/nest build",
-  "start": "node dist/main.js",
-  "start:dev": "nest start --watch",
-  "postinstall": "prisma generate",
-
+    "prebuild": "yarn install --frozen-lockfile",
+    "build": "node_modules/.bin/nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "postinstall": "prisma generate",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
@@ -23,6 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@nestjs/cli": "^11.0.14",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -49,7 +49,6 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
-    "@nestjs/cli": "^11.0.14",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.1",
     "@types/cors": "^2.8.19",
