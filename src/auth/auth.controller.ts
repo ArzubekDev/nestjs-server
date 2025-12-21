@@ -48,27 +48,34 @@ export class AuthController {
   }
 
   // ----------------- LOGIN -----------------
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+@Post('login')
+@HttpCode(HttpStatus.OK)
+async login(
+  @Body() dto: LoginDto,
+  @Res({ passthrough: true }) res: Response,
+) {
+  return this.authService.login(dto, res);
+}
+
+
+@Get('/oauth/callback/:provider')
+public async callback(
+  @Req() req: Request,
+  @Res({ passthrough: true }) res: Response,
+  @Query('code') code: string,
+  @Param('provider') provider: string,
+) {
+  if (!code) {
+    throw new BadRequestException('Не был предоставлен код авторизации.');
   }
 
-  @Get('/oauth/callback/:provider')
-  public async callback(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-    @Query('code') code: string,
-    @Param('provider') provider: string,
-  ) {
-    if(!code){
-      throw new BadRequestException('Не был предоставлен код авторизации.')
-    }
+  await this.authService.extractProfileFromCode(req, provider, code, res);
 
-    await this.authService.extractProfileFromCode(req, provider, code)
+  return res.redirect(
+    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}/dashboard/settings`,
+  );
+}
 
-    return res.redirect(`${this.configService.getOrThrow<string>('ALLOWED_ORIGIN')}/dashboard/settings`)
-  }
 
   @UseGuards(AuthProviderGuard)
   @Get('/oauth/connect/:provider')

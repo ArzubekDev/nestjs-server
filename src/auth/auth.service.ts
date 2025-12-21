@@ -58,39 +58,56 @@ export class AuthService {
 
     return { user: userData, token };
   }
-  private async saveSession(user: any) {
-    const token = this.jwtService.generateToken(user.id, user.email, user.role);
+private async saveSession(user: User, res: Response) {
+  const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-    // Эгер Token таблицасын колдонгуң келсе:
-    await this.prisma.token.create({
-      data: {
-        sessionToken: token,
-        type: TokenType.VERIFICATION, // же OAuth/LOGIN үчүн enum
-        userId: user.id,
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 күн
-      },
-    });
+  await this.prisma.token.create({
+    data: {
+      sessionToken: token,
+      type: TokenType.VERIFICATION,
+      userId: user.id,
+      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
 
-    return { user, token };
-  }
+  res.cookie('session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+  });
 
-  public async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (!user) throw new UnauthorizedException('Неверные учетные данные!!!');
+  return { user };
+}
 
-    const match = await bcrypt.compare(dto.password, user.password);
-    if (!match) throw new UnauthorizedException('Неверные учетные данные!!!');
 
-    const token = this.jwtService.generateToken(user.id, user.email, user.role);
-    return { user, token };
-  }
+public async login(dto: LoginDto, res: Response) {
+  const user = await this.prisma.user.findUnique({
+    where: { email: dto.email },
+  });
+  if (!user) throw new UnauthorizedException('Неверные учетные данные');
+
+  const match = await bcrypt.compare(dto.password, user.password!);
+  if (!match) throw new UnauthorizedException('Неверные учетные данные');
+
+  const token = this.jwtService.generateToken(user.id, user.email, user.role);
+
+  res.cookie('session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+  });
+
+  return { user };
+}
+
 
   public async extractProfileFromCode(
-    req: Request,
-    provider: string,
-    code: string,
+     req: Request,
+  provider: string,
+  code: string,
+  res: Response,
   ) {
     const providerInstance = this.providerService.findByService(provider);
     if (!providerInstance) {
@@ -114,7 +131,7 @@ export class AuthService {
       if (!user) {
         throw new InternalServerErrorException('User not found');
       }
-      return this.saveSession(user);
+      return this.saveSession(user, res);
     }
 
     let user: User | null = null;
@@ -158,11 +175,11 @@ export class AuthService {
       },
     });
 
-    return this.saveSession(user);
+    return this.saveSession(user, res);
   }
 
   public async logOut(res: Response) {
-    res.clearCookie('jwt', {
+    res.clearCookie('session', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
