@@ -58,8 +58,8 @@ async login(
 }
 
 
-@Get('me')
 @UseGuards(AuthGuard)
+@Get('me')
 getMe(@Req() req) {
   return req.user;
 }
