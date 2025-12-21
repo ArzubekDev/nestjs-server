@@ -58,6 +58,14 @@ async login(
 }
 
 
+@Get('me')
+@UseGuards(AuthGuard)
+getMe(@Req() req) {
+  return req.user;
+}
+
+
+
 @Get('/oauth/callback/:provider')
 public async callback(
   @Req() req: Request,

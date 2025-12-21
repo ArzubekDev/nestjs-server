@@ -13,11 +13,11 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtService {
-  generateToken(userId: string, email: string, role: Role) {
+  generateToken(userId: string, email: string, role: Role, name?: string) {
     const secret = process.env.JWT_SECRET!;
     if (!secret) throw new Error('Параметр JWT_SECRET не задан в файле .env!!!');
 
-    const payload = { id: userId, email, role };
+    const payload = { id: userId, email, role, name};
     const options: SignOptions = {
       expiresIn: process.env.JWT_EXPIRES_IN as SignOptions['expiresIn'] || '7d',
     };
