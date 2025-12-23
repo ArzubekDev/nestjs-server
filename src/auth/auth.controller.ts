@@ -60,7 +60,7 @@ async login(
 
 @UseGuards(AuthGuard)
 @Get('me')
-getMe(@Req() req) {
+getMe(@Req() req: Request) {
   return req.user;
 }
 
@@ -80,7 +80,7 @@ public async callback(
   await this.authService.extractProfileFromCode(req, provider, code, res);
 
   return res.redirect(
-    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}/dashboard/settings`,
+    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}`,
   );
 }
 

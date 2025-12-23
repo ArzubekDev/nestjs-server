@@ -175,8 +175,10 @@ public async login(dto: LoginDto, res: Response) {
         access_token: profile.access_token,
       },
     });
+    
 
     return this.saveSession(user, res);
+    
   }
 
   public async logOut(res: Response) {

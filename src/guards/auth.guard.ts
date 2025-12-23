@@ -17,24 +17,28 @@ export class AuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
-    const authHeader = request.headers.authorization;
-    if (!authHeader) {
-      throw new UnauthorizedException('No Authorization header');
+    // 1️⃣ token'ди cookie же header'ден алабыз
+    const token =
+      request.cookies?.session ||
+      request.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      throw new UnauthorizedException('No token provided');
     }
 
-    const [type, token] = authHeader.split(' ');
-    if (type !== 'Bearer' || !token) {
-      throw new UnauthorizedException('Invalid Authorization format');
-    }
-
+    // 2️⃣ JWT текшерүү
     const payload = this.jwtService.verifyToken(token);
     if (!payload) {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
+    // 3️⃣ user жүктөө
     const user = await this.userService.findById(payload.id);
-    request.user = user; 
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
 
+    request.user = user;
     return true;
   }
 }
