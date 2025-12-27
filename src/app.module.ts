@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
-import { LoggerMiddleware } from './middleware/auth.middleware';
+import { LoggerMiddleware } from './auth.middleware';
 import { UserModule } from './user/user.module';
 import { ProviderModule } from './auth/provider/provider.module';
+import { QuizModule } from './quiz/quiz.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ProviderModule } from './auth/provider/provider.module';
     PrismaModule,
     UserModule,
     ProviderModule,
+    QuizModule,
   ],
   controllers: [AppController],
   providers: [AppService],
