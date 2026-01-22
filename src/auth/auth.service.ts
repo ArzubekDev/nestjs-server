@@ -95,7 +95,7 @@ export class AuthService {
     res.cookie('session', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
       path: '/',
     });
 
@@ -182,7 +182,7 @@ export class AuthService {
     res.clearCookie('session', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
     });
 
     return { message: 'Пользователь успешно вышел' };
