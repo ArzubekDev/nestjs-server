@@ -28,6 +28,7 @@ export class CreateSoloSessionDto {
   @IsEnum(QuestionLevel)
   level: QuestionLevel;
 
+  
   @IsNumber()
   questionCount: number;
 }
