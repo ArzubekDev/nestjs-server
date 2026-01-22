@@ -58,57 +58,55 @@ export class AuthService {
 
     return { user: userData, token };
   }
-private async saveSession(user: User, res: Response) {
-  const token = this.jwtService.generateToken(user.id, user.email, user.role);
+  private async saveSession(user: User, res: Response) {
+    const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-  await this.prisma.token.create({
-    data: {
-      sessionToken: token,
-      type: TokenType.VERIFICATION,
-      userId: user.id,
-      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    },
-  });
+    await this.prisma.token.create({
+      data: {
+        sessionToken: token,
+        type: TokenType.VERIFICATION,
+        userId: user.id,
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
 
-  res.cookie('session', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-  });
+    res.cookie('session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      domain: process.env.SESSION_DOMAIN,
+      path: '/',
+    });
 
-  return { user };
-}
+    return { user };
+  }
 
+  public async login(dto: LoginDto, res: Response) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+    if (!user) throw new UnauthorizedException('Неверные учетные данные');
 
-public async login(dto: LoginDto, res: Response) {
-  const user = await this.prisma.user.findUnique({
-    where: { email: dto.email },
-  });
-  if (!user) throw new UnauthorizedException('Неверные учетные данные');
+    const match = await bcrypt.compare(dto.password, user.password!);
+    if (!match) throw new UnauthorizedException('Неверные учетные данные');
 
-  const match = await bcrypt.compare(dto.password, user.password!);
-  if (!match) throw new UnauthorizedException('Неверные учетные данные');
+    const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-  const token = this.jwtService.generateToken(user.id, user.email, user.role);
+    res.cookie('session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
 
-  res.cookie('session', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-  });
-
-  return { user };
-}
-
-
+    return { user };
+  }
 
   public async extractProfileFromCode(
-     req: Request,
-  provider: string,
-  code: string,
-  res: Response,
+    req: Request,
+    provider: string,
+    code: string,
+    res: Response,
   ) {
     const providerInstance = this.providerService.findByService(provider);
     if (!providerInstance) {
@@ -122,8 +120,8 @@ public async login(dto: LoginDto, res: Response) {
 
     const account = await this.prisma.account.findFirst({
       where: {
-       provider: profile.provider,
-    providerAccountId: profile.providerAccountId,
+        provider: profile.provider,
+        providerAccountId: profile.providerAccountId,
       },
     });
 
@@ -157,7 +155,8 @@ public async login(dto: LoginDto, res: Response) {
     if (!user) {
       user = await this.prisma.user.create({
         data: {
-          email: profile.email ?? `${profile.providerAccountId}@${provider}.oauth`,
+          email:
+            profile.email ?? `${profile.providerAccountId}@${provider}.oauth`,
           name: profile.name,
           picture: profile.picture,
           method: authMethod,
@@ -175,10 +174,8 @@ public async login(dto: LoginDto, res: Response) {
         access_token: profile.access_token,
       },
     });
-    
 
     return this.saveSession(user, res);
-    
   }
 
   public async logOut(res: Response) {
