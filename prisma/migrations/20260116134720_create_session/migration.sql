@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "QuizSession" ALTER COLUMN "code" DROP NOT NULL,
+ALTER COLUMN "qrCode" DROP NOT NULL;

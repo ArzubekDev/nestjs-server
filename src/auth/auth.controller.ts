@@ -26,6 +26,7 @@ import { RecaptchaService } from 'src/config/recaptcha.config';
 import { AuthProviderGuard } from 'src/guards/provider.guard';
 import { ConfigService } from '@nestjs/config';
 import { ProviderService } from './provider/provider.service';
+import { Public } from 'src/common/public.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -36,7 +37,6 @@ export class AuthController {
     private readonly providerService: ProviderService,
   ) {}
 
-  // ----------------- REGISTER -----------------
   @Post('register')
   @HttpCode(HttpStatus.OK)
   public async register(
@@ -47,7 +47,6 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
-  // ----------------- LOGIN -----------------
 @Post('login')
 @HttpCode(HttpStatus.OK)
 async login(
@@ -65,7 +64,7 @@ getMe(@Req() req: Request) {
 }
 
 
-
+@Public()
 @Get('/oauth/callback/:provider')
 public async callback(
   @Req() req: Request,
@@ -80,11 +79,12 @@ public async callback(
   await this.authService.extractProfileFromCode(req, provider, code, res);
 
   return res.redirect(
-    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}`,
-  );
+  `${this.configService.getOrThrow('ALLOWED_ORIGIN')}?auth=success`,
+);
+
 }
 
-
+  @Public()
   @UseGuards(AuthProviderGuard)
   @Get('/oauth/connect/:provider')
   public async connect(@Param('provider') provider: string) {
@@ -101,7 +101,6 @@ public async callback(
     return this.authService.logOut(res);
   }
 
-  // ----------------- ASSIGN ROLE -----------------
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.OWNER)
   @Post('assign-role')
@@ -112,9 +111,8 @@ public async callback(
     return this.authService.assignRole(dto, currentUserId);
   }
 
-  // ----------------- ADMIN PANEL -----------------
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.OWNER)
   @Get('admin-panel')
   getAdminPanel() {
     return 'Welcome Admin!';

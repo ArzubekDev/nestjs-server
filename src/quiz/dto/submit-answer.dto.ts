@@ -1,14 +1,12 @@
-import { IsString, IsUUID, IsNumber } from 'class-validator';
+import { IsString, IsUUID, IsNumber, IsBoolean } from 'class-validator';
 
 export class SubmitAnswerDto {
-  @IsUUID()
-  userId: string;
 
   @IsUUID()
   questionId: string;
 
-  @IsNumber()
-  value: number;
+  @IsUUID()
+  sessionId: string
 
   @IsString()
   selected: string;

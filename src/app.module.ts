@@ -8,6 +8,9 @@ import { LoggerMiddleware } from './auth.middleware';
 import { UserModule } from './user/user.module';
 import { ProviderModule } from './auth/provider/provider.module';
 import { QuizModule } from './quiz/quiz.module';
+import { AuthGuard } from './guards/auth.guard';
+import { APP_GUARD } from '@nestjs/core';
+import { LeaderboardModule } from './leaderboard/leaderboard.module';
 
 @Module({
   imports: [
@@ -19,9 +22,13 @@ import { QuizModule } from './quiz/quiz.module';
     UserModule,
     ProviderModule,
     QuizModule,
+    LeaderboardModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },],
 })
 export class AppModule implements NestModule{
   configure(consumer: MiddlewareConsumer) {

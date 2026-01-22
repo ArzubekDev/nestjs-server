@@ -1,76 +1,1007 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+// import {
+//   BadRequestException,
+//   Injectable,
+//   NotFoundException,
+// } from '@nestjs/common';
+// import { PrismaService } from 'src/prisma/prisma.service';
+// import { SubmitAnswerDto } from './dto/submit-answer.dto';
+// import {
+//   CreateCategoryDto,
+//   CreateQuizDto,
+//   GetQuestionsQueryDto,
+// } from './dto/create-quiz.dto';
+// import { CreateSessionDto, StartSessionDto } from './dto/create-session.dto';
+// import { shuffle } from 'src/utils/shuffle';
+
+// @Injectable()
+// export class QuizService {
+//   constructor(private readonly prisma: PrismaService) {}
+
+//   /* ===================== CATEGORY ===================== */
+
+//   async createCategory(dto: CreateCategoryDto) {
+//     return this.prisma.quizCategory.create({
+//       data: {
+//         name: dto.name,
+//         level: dto.level,
+//       },
+//     });
+//   }
+
+//   async findAllCategories() {
+//     return this.prisma.quizCategory.findMany({
+//       include: { _count: { select: { questions: true } } },
+//     });
+//   }
+
+//   /* ===================== QUESTIONS ===================== */
+
+//   async createQuestion(dto: CreateQuizDto) {
+//     return this.prisma.quizQuestion.create({
+//       data: {
+//         question: dto.question,
+//         options: dto.options,
+//         answer: dto.answer,
+//         timer: dto.timer,
+//         level: dto.level,
+//         maxPoints: dto.maxPoints,
+//         categoryId: dto.categoryId,
+//       },
+//     });
+//   }
+
+//   async getQuestionsByCategory(query: GetQuestionsQueryDto) {
+//     return this.prisma.quizQuestion.findMany({
+//       where: {
+//         categoryId: query.categoryId,
+//         ...(query.level && { level: query.level }),
+//       },
+//     });
+//   }
+
+//   /* ===================== SESSION ===================== */
+
+//   async createSession(userId: string, dto: CreateSessionDto) {
+//     const { categoryId, level, questionCount, mode } = dto;
+
+//     if (questionCount < 1) {
+//       throw new BadRequestException('Минимум 1 суроо');
+//     }
+
+//     const questions = await this.prisma.quizQuestion.findMany({
+//       where: { categoryId, level },
+//     });
+
+//     if (questions.length < questionCount) {
+//       throw new BadRequestException('Суроолор жетишсиз');
+//     }
+
+//     const code =
+//       mode === 'LOBBY'
+//         ? Math.floor(100000 + Math.random() * 900000).toString()
+//         : crypto.randomUUID().slice(0, 8).toUpperCase();
+
+//     const qrCode = `quiz:${code}`;
+
+//     const session = await this.prisma.quizSession.create({
+//       data: {
+//         code,
+//         qrCode,
+//         categoryId,
+//         level,
+//         mode,
+//         status: mode === 'SOLO' ? 'ACTIVE' : 'WAITING',
+//         startedAt: mode === 'SOLO' ? new Date() : null,
+//         participants: {
+//           create: { userId },
+//         },
+//       },
+//     });
+
+//     if (mode === 'SOLO') {
+//       await this.attachQuestions(session.id, questionCount);
+//     }
+
+//     return session;
+//   }
+
+// async getCurrentQuestion(sessionId: string, userId: string) {
+//   const session = await this.prisma.quizSession.findUnique({
+//     where: { id: sessionId },
+//     include: {
+//       questions: {
+//         include: { question: true },
+//         orderBy: { startedAt: 'asc' },
+//       },
+//       participants: true,
+//     },
+//   });
+
+//   if (!session) {
+//     throw new BadRequestException('Session табылган жок');
+//   }
+
+//   const participant = session.participants.find(
+//     (p) => p.userId === userId
+//   );
+
+//   const pointsTotal = participant?.score ?? 0;
+
+//   const totalQuestions = session.questions.length;
+
+//   const answers = await this.prisma.quizAnswer.findMany({
+//     where: { sessionId, userId },
+//     select: { questionId: true },
+//   });
+
+//   const answeredCount = answers.length;
+
+//   // ✅ 1. FINISHED — ЭҢ АЛГАЧКЫ RETURN
+//   if (session.status === 'FINISHED') {
+//     return {
+//       finished: true,
+//       pointsTotal,
+//       totalQuestions,
+//       answeredCount,
+//     };
+//   }
+
+//   // ✅ 2. ACTIVE эмес болсо — ката
+//   if (session.status !== 'ACTIVE') {
+//     throw new BadRequestException('Session активдүү эмес');
+//   }
+
+//   const answeredIds = new Set(answers.map((a) => a.questionId));
+
+//   const next = session.questions.find(
+//     (q) => !answeredIds.has(q.questionId)
+//   );
+
+//   // ✅ 3. Суроо калбаса — FINISH
+//   if (!next) {
+//     await this.finishSession(sessionId);
+
+//     return {
+//       finished: true,
+//       pointsTotal,
+//       totalQuestions,
+//       answeredCount,
+//     };
+//   }
+
+//   if (!next.startedAt) {
+//     const now = new Date();
+
+//     await this.prisma.sessionQuestion.update({
+//       where: { id: next.id },
+//       data: { startedAt: now },
+//     });
+
+//     next.startedAt = now;
+//   }
+
+//   const deadline =
+//     next.startedAt.getTime() + next.question.timer * 1000;
+
+//   // ⏱ timeout
+//   if (Date.now() > deadline) {
+//     await this.prisma.quizAnswer.upsert({
+//       where: {
+//         userId_questionId_sessionId: {
+//           userId,
+//           questionId: next.questionId,
+//           sessionId,
+//         },
+//       },
+//       update: {},
+//       create: {
+//         userId,
+//         sessionId,
+//         questionId: next.questionId,
+//         selected: null,
+//         isCorrect: false,
+//       },
+//     });
+
+//     return {
+//       expired: true,
+//       pointsTotal,
+//       totalQuestions,
+//       answeredCount: answeredCount + 1,
+//     };
+//   }
+
+//   // ✅ 4. НОРМАЛ СУРОО
+//   return {
+//     questionId: next.questionId,
+//     question: next.question.question,
+//     options: next.question.options,
+//     level: next.question.level,
+//     correctAnswer: next.question.answer,
+//     timer: next.question.timer,
+//     pointsTotal,
+//     totalQuestions,
+//     answeredCount,
+//     expiresAt: deadline,
+//     serverTime: Date.now(),
+//     finished: false,
+//   };
+// }
+
+//   async startSession(sessionId: string, dto: StartSessionDto) {
+//     const session = await this.prisma.quizSession.findUnique({
+//       where: { id: sessionId },
+//     });
+
+//     if (!session) {
+//       throw new NotFoundException('Session табылган жок');
+//     }
+
+//     if (session.mode !== 'LOBBY') {
+//       throw new BadRequestException('Solo session already started');
+//     }
+
+//     if (session.status !== 'WAITING') {
+//       throw new BadRequestException('Session already started');
+//     }
+
+//     await this.attachQuestions(sessionId, dto.questionCount);
+
+//     return this.prisma.quizSession.update({
+//       where: { id: sessionId },
+//       data: {
+//         status: 'ACTIVE',
+//         startedAt: new Date(),
+//       },
+//     });
+//   }
+
+//   private async attachQuestions(sessionId: string, questionCount: number) {
+//     const session = await this.prisma.quizSession.findUnique({
+//       where: { id: sessionId },
+//     });
+
+//     if (!session) {
+//       throw new NotFoundException('Session табылган жок');
+//     }
+
+//     const questions = await this.prisma.quizQuestion.findMany({
+//       where: {
+//         categoryId: session.categoryId,
+//         level: session.level,
+//       },
+//     });
+
+//     if (questions.length < questionCount) {
+//       throw new BadRequestException('Суроолор жетишсиз');
+//     }
+
+//     const selected = shuffle(questions).slice(0, questionCount);
+
+//     await this.prisma.sessionQuestion.createMany({
+//       data: selected.map((q) => ({
+//         sessionId,
+//         questionId: q.id,
+//         startedAt: null,
+//       })),
+//     });
+//   }
+
+//   getSessionQuestions(sessionId: string) {
+//     return this.prisma.sessionQuestion.findMany({
+//       where: { sessionId },
+//       include: { question: true },
+//     });
+//   }
+
+//   async getSessionByCode(code: string) {
+//     const session = await this.prisma.quizSession.findUnique({
+//       where: { code },
+//       include: {
+//         participants: { include: { user: true } },
+//         category: true,
+//         questions: { include: { question: true } },
+//       },
+//     });
+
+//     if (!session) {
+//       throw new NotFoundException('Session табылган жок');
+//     }
+
+//     // Жаңы: колдонуучунун pointsTotal кошуу
+//     const userScores = session.participants.map((p) => ({
+//       userId: p.userId,
+//       pointsTotal: p.score,
+//     }));
+
+//     return {
+//       id: session.id,
+//       code: session.code,
+//       category: {
+//         id: session.category.id,
+//         name: session.category.name,
+//       },
+//       level: session.level,
+//       status: session.status,
+//       participants: session.participants.map((p) => ({
+//         id: p.userId,
+//         name: p.user.name,
+//         picture: p.user.picture,
+//         score: p.score,
+//       })),
+//       userScores, // <- бул фронт үчүн колдонсо болот
+//       questionCount: session.questions.length,
+//       createdAt: session.createdAt,
+//     };
+//   }
+
+//   /* ===================== ANSWERS ===================== */
+
+//   async submitAnswer(userId: string, dto: SubmitAnswerDto) {
+//     const { sessionId, questionId, selected } = dto;
+
+//     const sessionQuestion = await this.prisma.sessionQuestion.findFirst({
+//       where: { sessionId, questionId },
+//       include: { question: true },
+//     });
+
+//     if (!sessionQuestion) {
+//       throw new BadRequestException('Суроо sessionда жок');
+//     }
+
+//     if (!sessionQuestion.startedAt) {
+//       throw new BadRequestException('startedAt жок');
+//     }
+
+//     const deadline =
+//       sessionQuestion.startedAt.getTime() +
+//       sessionQuestion.question.timer * 1000;
+
+//     // ⏱ таймаут
+//     if (Date.now() > deadline) {
+//       return { expired: true };
+//     }
+
+//     const isCorrect = sessionQuestion.question.answer === selected;
+
+//     const exists = await this.prisma.quizAnswer.findUnique({
+//       where: {
+//         userId_questionId_sessionId: {
+//           userId,
+//           questionId,
+//           sessionId,
+//         },
+//       },
+//     });
+
+//     if (exists) {
+//       return { isCorrect: exists.isCorrect };
+//     }
+
+//     return this.prisma.$transaction(async (tx) => {
+//       const answer = await tx.quizAnswer.create({
+//         data: {
+//           userId,
+//           sessionId,
+//           questionId,
+//           selected,
+//           isCorrect,
+//         },
+//       });
+
+//       if (isCorrect) {
+//         await tx.points.create({
+//           data: {
+//             userId,
+//             sessionId,
+//             answerId: answer.id,
+//             value: sessionQuestion.question.maxPoints,
+//             reason: 'Correct answer in SOLO session',
+//           },
+//         });
+
+//         await tx.quizParticipant.update({
+//           where: {
+//             userId_sessionId: {
+//               userId,
+//               sessionId,
+//             },
+//           },
+//           data: {
+//             score: {
+//               increment: sessionQuestion.question.maxPoints,
+//             },
+//           },
+//         });
+//       }
+
+//       return { isCorrect };
+//     });
+//   }
+
+//   async finishSession(sessionId: string) {
+//     await this.prisma.quizSession.update({
+//       where: { id: sessionId },
+//       data: {
+//         status: 'FINISHED',
+//         endedAt: new Date(),
+//       },
+//     });
+//   }
+
+//   /* ===================== LEADERBOARD ===================== */
+
+//   async getLeaderboard(sessionId: string) {
+//     const session = await this.prisma.quizSession.findUnique({
+//       where: { id: sessionId },
+//     });
+
+//     if (!session) {
+//       throw new NotFoundException('Сессия табылган жок');
+//     }
+
+//     const leaderboard = await this.prisma.quizParticipant.findMany({
+//       where: { sessionId },
+//       include: {
+//         user: {
+//           select: { id: true, name: true, picture: true },
+//         },
+//       },
+//       orderBy: { score: 'desc' },
+//     });
+
+//     return leaderboard.map((p, index) => ({
+//       rank: index + 1,
+//       userId: p.user.id,
+//       name: p.user.name,
+//       picture: p.user.picture,
+//       score: p.score,
+//     }));
+//   }
+// }
+
+
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
-import { CreateCategoryDto, CreateQuizDto } from './dto/create-quiz.dto';
+import {
+  CreateCategoryDto,
+  CreateQuizDto,
+  GetQuestionsQueryDto,
+} from './dto/create-quiz.dto';
+import { CreateSessionDto, StartSessionDto } from './dto/create-session.dto';
+import { shuffle } from 'src/utils/shuffle';
 
 @Injectable()
 export class QuizService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async submitAnswer(dto: SubmitAnswerDto) {
-    // 1. Тандалган суроону текшерүү
-    const question = await this.prisma.quizQuestion.findUnique({
-      where: { id: dto.questionId },
-    });
+  /* ===================== CATEGORY ===================== */
 
-    if (!question) {
-      throw new NotFoundException('Суроо табылган жок');
-    }
-
-    // 2. Колдонуучунун жоопун сактоо (QuizAnswer таблицага)
-    const answer = await this.prisma.quizAnswer.create({
-      data: {
-        userId: dto.userId,
-        questionId: dto.questionId,
-        selected: dto.selected,
-        isCorrect: question.answer === dto.selected,
-      },
-    });
-
-    // 3. Points кошуу (фронтендтен келген value менен)
-    if (dto.value > 0) {
-      await this.prisma.points.create({
-        data: {
-          userId: dto.userId,
-          value: dto.value,
-          reason: 'Quiz Answer',
-          answerId: answer.id,
-        },
-      });
-    }
-
-    return { answer, pointsAdded: dto.value };
-  }
-
-  async createQuestion(dto: CreateQuizDto) {
-  return this.prisma.quizQuestion.create({
-    data: {
-      question: dto.question,
-      options: dto.options,
-      answer: dto.answer,
-      timer: dto.timer,
-      level: dto.level,
-      categoryId: dto.categoryId,
-    },
-  });
-}
-
-async getQuestion(){
-  return this.prisma.quizQuestion.findMany()
-}
-
-  // Category түзүү
   async createCategory(dto: CreateCategoryDto) {
     return this.prisma.quizCategory.create({
       data: {
         name: dto.name,
+        level: dto.level,
       },
     });
   }
 
-  // Бардык категорияларды алуу
   async findAllCategories() {
-    return this.prisma.quizCategory.findMany();
+    return this.prisma.quizCategory.findMany({
+      include: { _count: { select: { questions: true } } },
+    });
   }
 
+  /* ===================== QUESTIONS ===================== */
+
+  async createQuestion(dto: CreateQuizDto) {
+    return this.prisma.quizQuestion.create({
+      data: {
+        question: dto.question,
+        options: dto.options,
+        answer: dto.answer,
+        timer: dto.timer,
+        level: dto.level,
+        maxPoints: dto.maxPoints,
+        categoryId: dto.categoryId,
+      },
+    });
+  }
+
+  async getQuestionsByCategory(query: GetQuestionsQueryDto) {
+    return this.prisma.quizQuestion.findMany({
+      where: {
+        categoryId: query.categoryId,
+        ...(query.level && { level: query.level }),
+      },
+    });
+  }
+
+  /* ===================== SESSION ===================== */
+
+  async createSession(userId: string, dto: CreateSessionDto) {
+    const { categoryId, level, questionCount, mode } = dto;
+
+    if (questionCount < 1) {
+      throw new BadRequestException('Минимум 1 суроо');
+    }
+
+    const questions = await this.prisma.quizQuestion.findMany({
+      where: { categoryId, level },
+    });
+
+    if (questions.length < questionCount) {
+      throw new BadRequestException('Суроолор жетишсиз');
+    }
+
+    const code =
+      mode === 'LOBBY'
+        ? Math.floor(100000 + Math.random() * 900000).toString()
+        : crypto.randomUUID().slice(0, 8).toUpperCase();
+
+    const qrCode = `quiz:${code}`;
+
+    const session = await this.prisma.quizSession.create({
+      data: {
+        code,
+        qrCode,
+        categoryId,
+        level,
+        mode,
+        status: mode === 'SOLO' ? 'ACTIVE' : 'WAITING',
+        startedAt: mode === 'SOLO' ? new Date() : null,
+        participants: {
+          create: { userId, role: 'ADMIN' },
+        },
+      },
+    });
+
+    if (mode === 'SOLO') {
+      await this.attachQuestions(session.id, questionCount);
+    }
+
+    return session;
+  }
+
+  async getCurrentQuestion(sessionId: string, userId: string) {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        questions: {
+          include: { question: true },
+          orderBy: { startedAt: 'asc' },
+        },
+        participants: true,
+      },
+    });
+
+    if (!session) {
+      throw new BadRequestException('Session табылган жок');
+    }
+
+    const participant = session.participants.find((p) => p.userId === userId);
+
+    const pointsTotal = participant?.score ?? 0;
+
+    const totalQuestions = session.questions.length;
+
+    const answers = await this.prisma.quizAnswer.findMany({
+      where: { sessionId, userId },
+      select: { questionId: true },
+    });
+
+    const answeredCount = answers.length;
+
+    // ✅ 1. FINISHED — ЭҢ АЛГАЧКЫ RETURN
+    if (session.status === 'FINISHED') {
+      return {
+        finished: true,
+        pointsTotal,
+        totalQuestions,
+        answeredCount,
+      };
+    }
+
+    // ✅ 2. ACTIVE эмес болсо — ката
+    if (session.status !== 'ACTIVE') {
+      throw new BadRequestException('Session активдүү эмес');
+    }
+
+    const answeredIds = new Set(answers.map((a) => a.questionId));
+
+    const next = session.questions.find((q) => !answeredIds.has(q.questionId));
+
+    // ✅ 3. Суроо калбаса — FINISH
+    if (!next) {
+await this.finishSession(sessionId);
+
+      return {
+        finished: true,
+        pointsTotal,
+        totalQuestions,
+        answeredCount,
+      };
+    }
+
+    if (!next.startedAt) {
+      const now = new Date();
+
+      await this.prisma.sessionQuestion.update({
+        where: { id: next.id },
+        data: { startedAt: now },
+      });
+
+      next.startedAt = now;
+    }
+
+    const deadline = next.startedAt.getTime() + next.question.timer * 1000;
+
+    // ⏱ timeout
+    if (Date.now() > deadline) {
+      await this.prisma.quizAnswer.upsert({
+        where: {
+          userId_questionId_sessionId: {
+            userId,
+            questionId: next.questionId,
+            sessionId,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          sessionId,
+          questionId: next.questionId,
+          selected: null,
+          isCorrect: false,
+        },
+      });
+
+      return {
+        expired: true,
+        pointsTotal,
+        totalQuestions,
+        answeredCount: answeredCount + 1,
+      };
+    }
+
+    // ✅ 4. НОРМАЛ СУРОО
+    return {
+      questionId: next.questionId,
+      question: next.question.question,
+      options: next.question.options,
+      level: next.question.level,
+      correctAnswer: next.question.answer,
+      timer: next.question.timer,
+      pointsTotal,
+      totalQuestions,
+      answeredCount,
+      expiresAt: deadline,
+      serverTime: Date.now(),
+      finished: false,
+    };
+  }
+
+  async startSession(sessionId: string, userId: string, dto: StartSessionDto) {
+    const participant = await this.prisma.quizParticipant.findUnique({
+      where: {
+        userId_sessionId: { userId, sessionId },
+      },
+    });
+
+    if (!participant || participant.role !== 'ADMIN') {
+      throw new BadRequestException('Тек админ баштай алат');
+    }
+
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session табылган жок');
+    }
+
+    if (session.mode !== 'LOBBY') {
+      throw new BadRequestException('Solo session already started');
+    }
+
+    if (session.status !== 'WAITING') {
+      throw new BadRequestException('Session already started');
+    }
+
+    await this.attachQuestions(sessionId, dto.questionCount);
+
+    return this.prisma.quizSession.update({
+      where: { id: sessionId },
+      data: {
+        status: 'ACTIVE',
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  private async attachQuestions(sessionId: string, questionCount: number) {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session табылган жок');
+    }
+
+    const questions = await this.prisma.quizQuestion.findMany({
+      where: {
+        categoryId: session.categoryId,
+        level: session.level,
+      },
+    });
+
+    if (questions.length < questionCount) {
+      throw new BadRequestException('Суроолор жетишсиз');
+    }
+
+    const selected = shuffle(questions).slice(0, questionCount);
+
+    await this.prisma.sessionQuestion.createMany({
+      data: selected.map((q) => ({
+        sessionId,
+        questionId: q.id,
+        startedAt: null,
+      })),
+    });
+  }
+
+  getSessionQuestions(sessionId: string) {
+    return this.prisma.sessionQuestion.findMany({
+      where: { sessionId },
+      include: { question: true },
+    });
+  }
+
+    private async getSessionRaw(where: { id: string } | { code: string }) {
+    return this.prisma.quizSession.findUnique({
+      where,
+      include: {
+        participants: { include: { user: true } },
+        category: true,
+        questions: { include: { question: true } },
+      },
+    });
+  }
+
+   async getSessionById(id: string) {
+    const session = await this.getSessionRaw({ id });
+    if (!session) throw new NotFoundException('Session табылган жок');
+    return this.mapSessionResponse(session);
+  }
+
+ async joinSessionByCode(code: string, userId: string) {
+  const session = await this.prisma.quizSession.findUnique({
+    where: { code },
+    include: { participants: true },
+  });
+
+  if (!session) throw new NotFoundException("Session табылган жок");
+
+  const alreadyJoined = session.participants.some(
+    (p) => p.userId === userId,
+  );
+  if (alreadyJoined) return session;
+
+  return this.prisma.quizSession.update({
+    where: { id: session.id },
+    data: {
+      participants: {
+        create: {
+          userId,
+          role: "USER",
+        },
+      },
+    },
+    include: {
+      participants: { include: { user: true } },
+      category: true,
+    },
+  });
+}
+
+
+   private mapSessionResponse(session: any) {
+    return {
+      id: session.id,
+      code: session.code,
+      qrCode: session.qrCode,
+      level: session.level,
+      status: session.status,
+      category: {
+        id: session.category.id,
+        name: session.category.name,
+      },
+      participants: session.participants.map((p) => ({
+        id: p.userId,
+        name: p.user.name,
+        picture: p.user.picture,
+        score: p.score,
+        role: p.role,
+      })),
+      userScores: session.participants.map((p) => ({
+        userId: p.userId,
+        pointsTotal: p.score,
+      })),
+      questionCount: session.questions.length,
+      createdAt: session.createdAt,
+    };
+  }
+
+
+  async getSessionByCode(code: string) {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { code },
+      include: {
+        participants: { include: { user: true } },
+        category: true,
+        questions: { include: { question: true } },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session табылган жок');
+    }
+
+    // Жаңы: колдонуучунун pointsTotal кошуу
+    const userScores = session.participants.map((p) => ({
+      userId: p.userId,
+      pointsTotal: p.score,
+    }));
+
+    return {
+      id: session.id,
+      code: session.code,
+      category: {
+        id: session.category.id,
+        name: session.category.name,
+      },
+      level: session.level,
+      status: session.status,
+      participants: session.participants.map((p) => ({
+        id: p.userId,
+        name: p.user.name,
+        picture: p.user.picture,
+        score: p.score,
+        role: p.role,
+      })),
+      userScores,
+      questionCount: session.questions.length,
+      createdAt: session.createdAt,
+    };
+  }
+
+
+  /* ===================== ANSWERS ===================== */
+
+  async submitAnswer(userId: string, dto: SubmitAnswerDto) {
+    const { sessionId, questionId, selected } = dto;
+
+    const sessionQuestion = await this.prisma.sessionQuestion.findFirst({
+      where: { sessionId, questionId },
+      include: { question: true },
+    });
+
+    if (!sessionQuestion) {
+      throw new BadRequestException('Суроо sessionда жок');
+    }
+
+    if (!sessionQuestion.startedAt) {
+      throw new BadRequestException('startedAt жок');
+    }
+
+    const deadline =
+      sessionQuestion.startedAt.getTime() +
+      sessionQuestion.question.timer * 1000;
+
+    // ⏱ таймаут
+    if (Date.now() > deadline) {
+      return { expired: true };
+    }
+
+    const isCorrect = sessionQuestion.question.answer === selected;
+
+    const exists = await this.prisma.quizAnswer.findUnique({
+      where: {
+        userId_questionId_sessionId: {
+          userId,
+          questionId,
+          sessionId,
+        },
+      },
+    });
+
+    if (exists) {
+      return { isCorrect: exists.isCorrect };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const answer = await tx.quizAnswer.create({
+        data: {
+          userId,
+          sessionId,
+          questionId,
+          selected,
+          isCorrect,
+        },
+      });
+
+      if (isCorrect) {
+        await tx.points.create({
+          data: {
+            userId,
+            sessionId,
+            answerId: answer.id,
+            value: sessionQuestion.question.maxPoints,
+            reason: 'Correct answer in SOLO session',
+          },
+        });
+
+        await tx.quizParticipant.update({
+          where: {
+            userId_sessionId: {
+              userId,
+              sessionId,
+            },
+          },
+          data: {
+            score: {
+              increment: sessionQuestion.question.maxPoints,
+            },
+          },
+        });
+      }
+
+      return { isCorrect };
+    });
+  }
+
+  async finishSession(sessionId: string) {
+    await this.prisma.quizSession.update({
+      where: { id: sessionId },
+      data: {
+        status: 'FINISHED',
+        endedAt: new Date(),
+      },
+    });
+  }
+
+  /* ===================== LEADERBOARD ===================== */
+
+  async getLeaderboard(sessionId: string) {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Сессия табылган жок');
+    }
+
+    const leaderboard = await this.prisma.quizParticipant.findMany({
+      where: { sessionId },
+      include: {
+        user: {
+          select: { id: true, name: true, picture: true },
+        },
+      },
+      orderBy: { score: 'desc' },
+    });
+
+    return leaderboard.map((p, index) => ({
+      rank: index + 1,
+      userId: p.user.id,
+      name: p.user.name,
+      picture: p.user.picture,
+      score: p.score,
+    }));
+  }
 }

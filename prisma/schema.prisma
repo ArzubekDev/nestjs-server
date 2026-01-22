@@ -7,37 +7,38 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  email     String    @unique
-  password  String?
+  email    String  @unique
+  password String?
 
-  name      String
-  picture   String?
+  name    String
+  picture String?
 
-  isVerified Boolean @default(false) @map("is_verified")
+  isVerified         Boolean @default(false) @map("is_verified")
   isTwoFactorEnabled Boolean @default(false) @map("is_two_factor_enabled")
 
-  level     Level @default(BRONZE) 
-  role      Role      @default(USER)
-  points    Points[]
-  answers   QuizAnswer[]
+  level   Level        @default(BRONZE)
+  role    Role         @default(USER)
+  points  Points[]
+  answers QuizAnswer[]
 
-  method    AuthMethod
-  accounts  Account[]
-  sessions  Token[]
+  method           AuthMethod
+  accounts         Account[]
+  sessions         Token[]
+  quizParticipants QuizParticipant[]
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
 model Account {
-  id       String   @id @default(uuid())
-  userId            String @map("user_id")
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
   provider          String
-  providerAccountId String @map("provider_account_id")
+  providerAccountId String   @map("provider_account_id")
   access_token      String?
   refresh_token     String?
   expires_at        Int?
@@ -46,81 +47,152 @@ model Account {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-   user User @relation(fields: [userId],references: [id],onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@map("accounts")
 }
 
 model Token {
-  id       String   @id @default(uuid())
-  sessionToken String @unique @map("session_token")
+  id           String    @id @default(uuid())
+  sessionToken String    @unique @map("session_token")
   type         TokenType
-  userId       String @map("user_id")
+  userId       String    @map("user_id")
   expires      DateTime
 
-  user User @relation(fields: [userId],references: [id],onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("token")
 }
 
 model Points {
-  id         Int      @id @default(autoincrement())
-  userId     String                    @map("user_id")
-  value      Int
-  reason     String?
-  answerId   String                    @map("answer_id")
-  createdAt  DateTime @default(now())  @map("created_at")
+  id        Int      @id @default(autoincrement())
+  userId    String   @map("user_id")
+  sessionId String   @map("session_id")
+  answerId  String   @map("answer_id")
+  value     Int
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
 
-  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  answer QuizAnswer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answer  QuizAnswer  @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  session QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("points")
 }
 
-
 model QuizCategory {
-  id       String          @id @default(uuid())
-  name     String          @unique
+  id        String         @id @default(uuid())
+  name      String         @unique
+  level     QuestionLevel
   questions QuizQuestion[]
+  sessions  QuizSession[]
+
   @@map("quiz_category")
 }
 
 model QuizQuestion {
-  id         String       @id @default(uuid())
-  question   String
-  options    Json         
-  answer     String           
-  level      QuestionLevel
-  timer      Int
+  id        String        @id @default(uuid())
+  question  String
+  options   Json
+  answer    String
+  level     QuestionLevel
+  timer     Int
+  maxPoints Int
 
   categoryId String       @map("category_id")
   category   QuizCategory @relation(fields: [categoryId], references: [id])
 
-  answers    QuizAnswer[]
+  answers          QuizAnswer[]
+  sessionQuestions SessionQuestion[]
+
   @@map("quiz_questions")
 }
 
-model QuizAnswer {
-  id          String   @id @default(uuid())
-  userId      String                      @map("user_id")
-  questionId  String                      @map("question_id")
-  selected    String
-  isCorrect   Boolean                     @map("is_correct")
-  createdAt   DateTime @default(now())    @map("created_at")
+model QuizSession {
+  id         String        @id @default(uuid())
+  code       String?        @unique
+  qrCode     String?
+  categoryId String        @map("category_id")
 
-  points      Points[]
+   mode        SessionMode
+  level      QuestionLevel
+  status     QuizStatus    @default(WAITING)
+
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  category     QuizCategory      @relation(fields: [categoryId], references: [id])
+  participants QuizParticipant[]
+  questions    SessionQuestion[]
+  answers      QuizAnswer[]
+  points       Points[]
+}
+
+model QuizParticipant {
+  id        String @id @default(uuid())
+  userId    String
+  sessionId String
+  score     Int    @default(0)
+
+  role      ParticipantRole @default(USER)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session QuizSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+}
+
+model SessionQuestion {
+  id         String   @id @default(uuid())
+  sessionId  String
+  questionId String
+  startedAt  DateTime?
+
+  session  QuizSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, questionId])
+}
+
+model QuizAnswer {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  questionId String   @map("question_id")
+  sessionId  String   @map("session_id")
+  selected   String?
+  isCorrect  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
 
   user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   question QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  session  QuizSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  points   Points[]
 
-  @@unique([userId, questionId])
+  @@unique([userId, questionId, sessionId])
 }
 
+enum QuizStatus {
+  WAITING // room ачылган, бирок старт жок
+  ACTIVE // суроолор кетип жатат
+  FINISHED // quiz бүттү
+  CANCELED // админ токтотту
+}
+
+enum ParticipantRole {
+  ADMIN
+  USER
+}
 
 enum Role {
-  USER 
-  ADMIN
+  USER
+  ELITE
   OWNER
+}
+
+enum SessionMode {
+  SOLO
+  LOBBY
 }
 
 enum Level {
@@ -138,9 +210,9 @@ enum QuestionLevel {
 }
 
 enum AuthMethod {
-CREDENTIALS
-GOOGLE
-GITHUB
+  CREDENTIALS
+  GOOGLE
+  GITHUB
 }
 
 enum TokenType {
