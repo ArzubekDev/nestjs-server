@@ -74,7 +74,7 @@ export class AuthService {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'none',
-      domain: process.env.SESSION_DOMAIN,
+      // domain: process.env.SESSION_DOMAIN,
       path: '/',
     });
 
