@@ -58,48 +58,66 @@ export class AuthService {
 
     return { user: userData, token };
   }
-  private async saveSession(user: User, res: Response) {
-    const token = this.jwtService.generateToken(user.id, user.email, user.role);
+  // private async saveSession(user: User, res: Response) {
+  //   const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-    await this.prisma.token.create({
-      data: {
-        sessionToken: token,
-        type: TokenType.VERIFICATION,
-        userId: user.id,
-        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
+  //   await this.prisma.token.create({
+  //     data: {
+  //       sessionToken: token,
+  //       type: TokenType.VERIFICATION,
+  //       userId: user.id,
+  //       expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  //     },
+  //   });
 
-    res.cookie('session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      // domain: process.env.SESSION_DOMAIN,
-      path: '/',
-    });
+  //   res.cookie('session', token, {
+  //     httpOnly: true,
+  //     secure: process.env.NODE_ENV === 'production',
+  //     sameSite: 'none',
+  //     // domain: process.env.SESSION_DOMAIN,
+  //     path: '/',
+  //   });
 
-    return { user };
-  }
+  //   return { user };
+  // }
 
-  public async login(dto: LoginDto, res: Response) {
+  // public async login(dto: LoginDto, res: Response) {
+  //   const user = await this.prisma.user.findUnique({
+  //     where: { email: dto.email },
+  //   });
+  //   if (!user) throw new UnauthorizedException('Неверные учетные данные');
+
+  //   const match = await bcrypt.compare(dto.password, user.password!);
+  //   if (!match) throw new UnauthorizedException('Неверные учетные данные');
+
+  //   const token = this.jwtService.generateToken(user.id, user.email, user.role);
+
+  //   res.cookie('session', token, {
+  //     httpOnly: true,
+  //     secure: process.env.NODE_ENV === 'production',
+  //     sameSite: 'none',
+  //     path: '/',
+  //   });
+
+  //   return { user };
+  // }
+  public async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user) throw new UnauthorizedException('Неверные учетные данные');
+    if (!user || !user.password) {
+      throw new UnauthorizedException('Неверные учетные данные');
+    }
 
-    const match = await bcrypt.compare(dto.password, user.password!);
+    const match = await bcrypt.compare(dto.password, user.password);
     if (!match) throw new UnauthorizedException('Неверные учетные данные');
 
     const token = this.jwtService.generateToken(user.id, user.email, user.role);
 
-    res.cookie('session', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      path: '/',
-    });
-
-    return { user };
+    return {
+      accessToken: token,
+      user,
+    };
   }
 
   public async extractProfileFromCode(
@@ -130,7 +148,17 @@ export class AuthService {
       if (!user) {
         throw new InternalServerErrorException('User not found');
       }
-      return this.saveSession(user, res);
+
+      const token = this.jwtService.generateToken(
+        user.id,
+        user.email,
+        user.role,
+      );
+
+      return {
+        accessToken: token,
+        user,
+      };
     }
 
     let user: User | null = null;
@@ -175,18 +203,23 @@ export class AuthService {
       },
     });
 
-    return this.saveSession(user, res);
+    const token = this.jwtService.generateToken(user.id, user.email, user.role);
+
+    return {
+      accessToken: token,
+      user,
+    };
   }
 
-  public async logOut(res: Response) {
-    res.clearCookie('session', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-    });
+  // public async logOut(res: Response) {
+  //   res.clearCookie('session', {
+  //     httpOnly: true,
+  //     secure: process.env.NODE_ENV === 'production',
+  //     sameSite: 'none',
+  //   });
 
-    return { message: 'Пользователь успешно вышел' };
-  }
+  //   return { message: 'Пользователь успешно вышел' };
+  // }
 
   public async assignRole(
     dto: { userId: string; role: Role },
