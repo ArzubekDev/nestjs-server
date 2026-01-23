@@ -53,7 +53,7 @@ async login(
   @Body() dto: LoginDto,
   @Res({ passthrough: true }) res: Response,
 ) {
-  return this.authService.login(dto, res);
+  return this.authService.login(dto);
 }
 
 
@@ -64,25 +64,44 @@ getMe(@Req() req: Request) {
 }
 
 
+// @Public()
+// @Get('/oauth/callback/:provider')
+// public async callback(
+//   @Req() req: Request,
+//   @Res({ passthrough: true }) res: Response,
+//   @Query('code') code: string,
+//   @Param('provider') provider: string,
+// ) {
+//   if (!code) {
+//     throw new BadRequestException('Не был предоставлен код авторизации.');
+//   }
+
+//   await this.authService.extractProfileFromCode(req, provider, code, res);
+
+//   return res.redirect(
+//   `${this.configService.getOrThrow('ALLOWED_ORIGIN')}?auth=success`,
+// );
+
+// }
+
 @Public()
 @Get('/oauth/callback/:provider')
-public async callback(
-  @Req() req: Request,
-  @Res({ passthrough: true }) res: Response,
+async callback(
   @Query('code') code: string,
   @Param('provider') provider: string,
 ) {
   if (!code) {
-    throw new BadRequestException('Не был предоставлен код авторизации.');
+    throw new BadRequestException('No auth code');
   }
 
-  await this.authService.extractProfileFromCode(req, provider, code, res);
-
-  return res.redirect(
-  `${this.configService.getOrThrow('ALLOWED_ORIGIN')}?auth=success`,
-);
-
+  return this.authService.extractProfileFromCode(
+    {} as any,
+    provider,
+    code,
+    {} as any,
+  );
 }
+
 
   @Public()
   @UseGuards(AuthProviderGuard)
@@ -95,11 +114,11 @@ public async callback(
     };
   }
 
-  @Post('logout')
-  @HttpCode(HttpStatus.OK)
-  async logout(@Res({ passthrough: true }) res: Response) {
-    return this.authService.logOut(res);
-  }
+  // @Post('logout')
+  // @HttpCode(HttpStatus.OK)
+  // async logout(@Res({ passthrough: true }) res: Response) {
+  //   return this.authService.logOut(res);
+  // }
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.OWNER)
