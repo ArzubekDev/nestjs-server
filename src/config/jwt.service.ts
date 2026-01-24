@@ -4,9 +4,9 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 
 export interface JwtPayload {
   id: string;
-  name: string;
   email: string;
   role: Role;
+  name?: string;
   iat?: number;
   exp?: number;
 }
