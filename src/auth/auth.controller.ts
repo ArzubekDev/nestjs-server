@@ -89,18 +89,26 @@ getMe(@Req() req: Request) {
 async callback(
   @Query('code') code: string,
   @Param('provider') provider: string,
+  @Req() req: Request,
+  @Res() res: Response,
 ) {
   if (!code) {
     throw new BadRequestException('No auth code');
   }
 
-  return this.authService.extractProfileFromCode(
-    {} as any,
-    provider,
-    code,
-    {} as any,
+  const { accessToken } =
+    await this.authService.extractProfileFromCode(
+      req,
+      provider,
+      code,
+      res,
+    );
+
+  return res.redirect(
+    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}/auth/callback?token=${accessToken}`,
   );
 }
+
 
 
   @Public()
