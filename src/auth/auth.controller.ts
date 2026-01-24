@@ -105,8 +105,8 @@ async callback(
     );
 
   return res.redirect(
-    `${this.configService.getOrThrow('ALLOWED_ORIGIN')}/auth/callback?token=${accessToken}`,
-  );
+  `${this.configService.getOrThrow("ALLOWED_ORIGIN")}/callback?token=${accessToken}`
+);
 }
 
 
