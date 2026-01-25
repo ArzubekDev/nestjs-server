@@ -47,69 +47,75 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
-@Post('login')
-@HttpCode(HttpStatus.OK)
-async login(
-  @Body() dto: LoginDto,
-  @Res({ passthrough: true }) res: Response,
-) {
-  return this.authService.login(dto);
-}
-
-
-@UseGuards(AuthGuard)
-@Get('me')
-getMe(@Req() req: Request) {
-  return req.user;
-}
-
-
-// @Public()
-// @Get('/oauth/callback/:provider')
-// public async callback(
-//   @Req() req: Request,
-//   @Res({ passthrough: true }) res: Response,
-//   @Query('code') code: string,
-//   @Param('provider') provider: string,
-// ) {
-//   if (!code) {
-//     throw new BadRequestException('Не был предоставлен код авторизации.');
-//   }
-
-//   await this.authService.extractProfileFromCode(req, provider, code, res);
-
-//   return res.redirect(
-//   `${this.configService.getOrThrow('ALLOWED_ORIGIN')}?auth=success`,
-// );
-
-// }
-
-@Public()
-@Get('/oauth/callback/:provider')
-async callback(
-  @Query('code') code: string,
-  @Param('provider') provider: string,
-  @Req() req: Request,
-  @Res() res: Response,
-) {
-  if (!code) {
-    throw new BadRequestException('No auth code');
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.authService.login(dto);
   }
 
-  const { accessToken } =
-    await this.authService.extractProfileFromCode(
+  @UseGuards(AuthGuard)
+  @Get('me')
+  getMe(@Req() req: Request) {
+    return req.user;
+  }
+
+  // @Public()
+  // @Get('/oauth/callback/:provider')
+  // public async callback(
+  //   @Req() req: Request,
+  //   @Res({ passthrough: true }) res: Response,
+  //   @Query('code') code: string,
+  //   @Param('provider') provider: string,
+  // ) {
+  //   if (!code) {
+  //     throw new BadRequestException('Не был предоставлен код авторизации.');
+  //   }
+
+  //   await this.authService.extractProfileFromCode(req, provider, code, res);
+
+  //   return res.redirect(
+  //   `${this.configService.getOrThrow('ALLOWED_ORIGIN')}?auth=success`,
+  // );
+
+  // }
+
+  @Public()
+  @Get('/oauth/callback/:provider')
+  async callback(
+    @Query('code') code: string,
+    @Param('provider') provider: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    console.log('PROVIDER:', provider);
+    console.log('CODE:', code);
+    console.log('NODE_ENV:', process.env.NODE_ENV);
+    console.log('CLIENT_URL:', process.env.CLIENT_URL_PROD);
+
+    if (!code) {
+      throw new BadRequestException('No auth code');
+    }
+
+    const { accessToken } = await this.authService.extractProfileFromCode(
       req,
       provider,
       code,
       res,
     );
+    const clientUrl =
+      this.configService.get('NODE_ENV') === 'production'
+        ? this.configService.getOrThrow('CLIENT_URL_PROD')
+        : this.configService.getOrThrow('CLIENT_URL_DEV');
 
-  return res.redirect(
-  `${this.configService.getOrThrow("ALLOWED_ORIGIN")}/callback?token=${accessToken}`
-);
-}
+    return res.redirect(`${clientUrl}/callback?token=${accessToken}`);
 
-
+    //   return res.redirect(
+    //   `${this.configService.getOrThrow("ALLOWED_ORIGIN")}/callback?token=${accessToken}`
+    // );
+  }
 
   @Public()
   @UseGuards(AuthProviderGuard)
