@@ -105,16 +105,9 @@ export class AuthController {
       code,
       res,
     );
-    const clientUrl =
-      this.configService.get('NODE_ENV') === 'production'
-        ? this.configService.getOrThrow('CLIENT_URL_PROD')
-        : this.configService.getOrThrow('CLIENT_URL_DEV');
+    const clientUrl = this.configService.getOrThrow('CLIENT_URL');
 
     return res.redirect(`${clientUrl}/callback?token=${accessToken}`);
-
-    //   return res.redirect(
-    //   `${this.configService.getOrThrow("ALLOWED_ORIGIN")}/callback?token=${accessToken}`
-    // );
   }
 
   @Public()
