@@ -9,7 +9,6 @@ export const getProvidersConfig = async (
 
   const baseUrl = configService.getOrThrow('APPLICATION_URL');
 
-
   const services = [
     new GoogleProvider({
       client_id: configService.getOrThrow<string>('GOOGLE_CLIENT_ID'),

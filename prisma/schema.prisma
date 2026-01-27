@@ -114,8 +114,9 @@ model QuizSession {
   code       String?        @unique
   qrCode     String?
   categoryId String        @map("category_id")
+  questionCount Int?
 
-   mode        SessionMode
+  mode        SessionMode
   level      QuestionLevel
   status     QuizStatus    @default(WAITING)
 

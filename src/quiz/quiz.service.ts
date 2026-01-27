@@ -12,6 +12,7 @@ import {
 } from './dto/create-quiz.dto';
 import { CreateSessionDto, StartSessionDto } from './dto/create-session.dto';
 import { shuffle } from 'src/utils/shuffle';
+import { QuizStatus } from '@prisma/client';
 
 @Injectable()
 export class QuizService {
@@ -64,7 +65,7 @@ export class QuizService {
   async createSession(userId: string, dto: CreateSessionDto) {
     const { categoryId, level, questionCount, mode } = dto;
 
-    if (questionCount < 1) {
+    if (!questionCount || questionCount < 1) {
       throw new BadRequestException('Минимум 1 суроо');
     }
 
@@ -90,11 +91,20 @@ export class QuizService {
         categoryId,
         level,
         mode,
+        questionCount, // ✅ САКТАЛАТ
         status: mode === 'SOLO' ? 'ACTIVE' : 'WAITING',
         startedAt: mode === 'SOLO' ? new Date() : null,
         participants: {
           create: { userId, role: 'ADMIN' },
         },
+      },
+    });
+
+    await this.prisma.quizSession.update({
+      where: { id: session.id },
+      data: {
+        status: mode === 'SOLO' ? QuizStatus.ACTIVE : QuizStatus.WAITING,
+        startedAt: mode === 'SOLO' ? new Date() : null,
       },
     });
 
@@ -155,7 +165,7 @@ export class QuizService {
 
     // ✅ 3. Суроо калбаса — FINISH
     if (!next) {
-await this.finishSession(sessionId);
+      await this.finishSession(sessionId);
 
       return {
         finished: true,
@@ -206,7 +216,6 @@ await this.finishSession(sessionId);
       };
     }
 
-    // ✅ 4. НОРМАЛ СУРОО
     return {
       questionId: next.questionId,
       question: next.question.question,
@@ -214,6 +223,7 @@ await this.finishSession(sessionId);
       level: next.question.level,
       correctAnswer: next.question.answer,
       timer: next.question.timer,
+      mode: session.mode,
       pointsTotal,
       totalQuestions,
       answeredCount,
@@ -223,7 +233,7 @@ await this.finishSession(sessionId);
     };
   }
 
-  async startSession(sessionId: string, userId: string, dto: StartSessionDto) {
+  async startSession(sessionId: string, userId: string) {
     const participant = await this.prisma.quizParticipant.findUnique({
       where: {
         userId_sessionId: { userId, sessionId },
@@ -250,7 +260,11 @@ await this.finishSession(sessionId);
       throw new BadRequestException('Session already started');
     }
 
-    await this.attachQuestions(sessionId, dto.questionCount);
+    if (!session?.questionCount) {
+      throw new BadRequestException('questionCount жок');
+    }
+
+    await this.attachQuestions(sessionId, session.questionCount);
 
     return this.prisma.quizSession.update({
       where: { id: sessionId },
@@ -299,7 +313,7 @@ await this.finishSession(sessionId);
     });
   }
 
-    private async getSessionRaw(where: { id: string } | { code: string }) {
+  private async getSessionRaw(where: { id: string } | { code: string }) {
     return this.prisma.quizSession.findUnique({
       where,
       include: {
@@ -310,59 +324,60 @@ await this.finishSession(sessionId);
     });
   }
 
-   async getSessionById(id: string) {
+  async getSessionById(id: string) {
     const session = await this.getSessionRaw({ id });
     if (!session) throw new NotFoundException('Session табылган жок');
     return this.mapSessionResponse(session);
   }
 
-async joinSessionByCode(code: string, userId: string) {
-  const session = await this.prisma.quizSession.findUnique({
-    where: { code },
-    include: {
-      participants: { include: { user: true } },
-      category: true,
-    },
-  });
+  async joinSessionByCode(code: string, userId: string) {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { code },
+      include: {
+        participants: { include: { user: true } },
+        category: true,
+        questions: true,
+      },
+    });
 
-  if (!session) throw new NotFoundException('Session табылган жок');
+    if (!session) throw new NotFoundException('Session табылган жок');
 
-  const alreadyJoined = session.participants.some(
-    (p) => p.userId === userId,
-  );
+    const alreadyJoined = session.participants.some((p) => p.userId === userId);
 
-  if (alreadyJoined) {
-    return this.mapSessionResponse(session);
-  }
+    if (alreadyJoined) {
+      return this.mapSessionResponse(session);
+    }
 
-  const updated = await this.prisma.quizSession.update({
-    where: { id: session.id },
-    data: {
-      participants: {
-        create: {
-          userId,
-          role: 'USER',
+    const updated = await this.prisma.quizSession.update({
+      where: { id: session.id },
+      data: {
+        participants: {
+          create: {
+            userId,
+            role: 'USER',
+          },
         },
       },
-    },
-    include: {
-      participants: { include: { user: true } },
-      category: true,
-      questions: true,
-    },
-  });
+      include: {
+        participants: { include: { user: true } },
+        category: true,
+        questions: true,
+      },
+    });
 
-  return this.mapSessionResponse(updated);
-}
+    return this.mapSessionResponse(updated);
+  }
 
-
-   private mapSessionResponse(session: any) {
+  private mapSessionResponse(session: any) {
+    const admin = session.participants.find((p) => p.role === 'ADMIN');
     return {
       id: session.id,
       code: session.code,
       qrCode: session.qrCode,
       level: session.level,
       status: session.status,
+      questionCount: session.questionCount ?? 0,
+      adminId: admin?.userId ?? null,
       category: {
         id: session.category.id,
         name: session.category.name,
@@ -378,11 +393,9 @@ async joinSessionByCode(code: string, userId: string) {
         userId: p.userId,
         pointsTotal: p.score,
       })),
-      questionCount: session.questions.length,
       createdAt: session.createdAt,
     };
   }
-
 
   async getSessionByCode(code: string) {
     const session = await this.prisma.quizSession.findUnique({
@@ -407,6 +420,7 @@ async joinSessionByCode(code: string, userId: string) {
     return {
       id: session.id,
       code: session.code,
+      qrCode: session.qrCode,
       category: {
         id: session.category.id,
         name: session.category.name,
@@ -425,7 +439,6 @@ async joinSessionByCode(code: string, userId: string) {
       createdAt: session.createdAt,
     };
   }
-
 
   /* ===================== ANSWERS ===================== */
 
@@ -519,6 +532,25 @@ async joinSessionByCode(code: string, userId: string) {
         endedAt: new Date(),
       },
     });
+  }
+
+  async getScoreboard(sessionId: string) {
+    const participants = await this.prisma.quizParticipant.findMany({
+      where: { sessionId },
+      include: {
+        user: {
+          select: { id: true, name: true, picture: true },
+        },
+      },
+      orderBy: { score: 'desc' },
+    });
+
+    return participants.map((p) => ({
+      userId: p.user.id,
+      name: p.user.name,
+      picture: p.user.picture,
+      score: p.score,
+    }));
   }
 
   /* ===================== LEADERBOARD ===================== */

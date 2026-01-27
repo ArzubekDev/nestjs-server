@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Query, Param, Req } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Param, Req, UseGuards } from '@nestjs/common';
 import { QuizService } from './quiz.service';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import {
@@ -12,6 +12,7 @@ import { CreateSessionDto, StartSessionDto } from './dto/create-session.dto';
 import { JwtService } from 'src/config/jwt.service';
 import { UserService } from 'src/user/user.service';
 import { Public } from 'src/common/public.decorator';
+import { AuthGuard } from 'src/guards/auth.guard';
 
 @Controller('quiz')
 export class QuizController {
@@ -95,16 +96,15 @@ joinSessionByCode(
   return this.quizService.joinSessionByCode(code, userId);
 }
 
-
   // START LOBBY SESSION
   @Authorization()
   @Post('session/:id/start')
+  @UseGuards(AuthGuard)
   startSession(
     @Param('id') sessionId: string,
     @Authorized('id') userId: string,
-    @Body() dto: StartSessionDto,
   ) {
-    return this.quizService.startSession(sessionId, userId, dto);
+    return this.quizService.startSession(sessionId, userId);
   }
 
   // getCurrentLeaderboard
@@ -114,6 +114,11 @@ joinSessionByCode(
   async getCurrentLeaderboard(@Param('id') sessionId: string) {
     return this.quizService.getLeaderboard(sessionId);
   }
+
+  @Get('session/:id/scoreboard')
+getScoreboard(@Param('id') sessionId: string) {
+  return this.quizService.getScoreboard(sessionId);
+}
 
   // @Authorization()
   // @Get('session/:id/leaderboard')

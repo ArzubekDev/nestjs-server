@@ -90,10 +90,6 @@ export class AuthController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
-    console.log('PROVIDER:', provider);
-    console.log('CODE:', code);
-    console.log('NODE_ENV:', process.env.NODE_ENV);
-    console.log('CLIENT_URL:', process.env.CLIENT_URL_PROD);
 
     if (!code) {
       throw new BadRequestException('No auth code');
