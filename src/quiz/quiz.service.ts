@@ -151,6 +151,7 @@ export class QuizService {
         pointsTotal,
         totalQuestions,
         answeredCount,
+        mode: session.mode,
       };
     }
 
@@ -172,6 +173,7 @@ export class QuizService {
         pointsTotal,
         totalQuestions,
         answeredCount,
+        mode: session.mode,
       };
     }
 
@@ -213,6 +215,7 @@ export class QuizService {
         pointsTotal,
         totalQuestions,
         answeredCount: answeredCount + 1,
+        mode: session.mode,
       };
     }
 
@@ -230,6 +233,7 @@ export class QuizService {
       expiresAt: deadline,
       serverTime: Date.now(),
       finished: false,
+      participantCount: session.participants.length,
     };
   }
 
@@ -518,6 +522,7 @@ export class QuizService {
             },
           },
         });
+        await this.updateUserLevel(userId);
       }
 
       return { isCorrect };
@@ -525,15 +530,43 @@ export class QuizService {
   }
 
   async finishSession(sessionId: string) {
-    await this.prisma.quizSession.update({
+    const session = await this.prisma.quizSession.update({
       where: { id: sessionId },
       data: {
         status: 'FINISHED',
         endedAt: new Date(),
       },
+      select: {
+        id: true,
+        mode: true,
+      },
     });
+
+    return session;
   }
 
+  private getLevelByPoints(points: number) {
+    if (points >= 2500) return 'ELITE';
+    if (points >= 1000) return 'PLATINUM';
+    if (points >= 750) return 'GOLD';
+    if (points >= 250) return 'SILVER';
+    return 'BRONZE';
+  }
+  private async updateUserLevel(userId: string) {
+    const total = await this.prisma.points.aggregate({
+      where: { userId },
+      _sum: { value: true },
+    });
+
+    const totalPoints = total._sum.value ?? 0;
+
+    const newLevel = this.getLevelByPoints(totalPoints);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { level: newLevel as any },
+    });
+  }
   async getScoreboard(sessionId: string) {
     const participants = await this.prisma.quizParticipant.findMany({
       where: { sessionId },
