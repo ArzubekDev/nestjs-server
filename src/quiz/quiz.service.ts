@@ -471,6 +471,12 @@ export class QuizService {
     if (Date.now() > deadline) {
       return { expired: true };
     }
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+      include: { participants: true },
+    });
+
+    if (!session) throw new BadRequestException('Session табылган жок');
 
     const isCorrect = sessionQuestion.question.answer === selected;
 
@@ -526,6 +532,14 @@ export class QuizService {
         await this.updateUserLevel(userId);
       }
 
+      const answeredPlayers = await tx.quizAnswer.count({
+        where: { sessionId, questionId },
+      });
+      const totalPlayers = session.participants.length;
+
+      if (answeredPlayers === totalPlayers) {
+        await this.advanceToNextQuestion(sessionId);
+      }
       return { isCorrect };
     });
   }
@@ -585,6 +599,32 @@ export class QuizService {
       picture: p.user.picture,
       score: p.score,
     }));
+  }
+
+  async countAnswersForQuestion(sessionId: string, questionId: string) {
+    return this.prisma.quizAnswer.count({
+      where: { sessionId, questionId },
+    });
+  }
+
+  async advanceToNextQuestion(sessionId: string) {
+    const sessionQuestions = await this.prisma.sessionQuestion.findMany({
+      where: { sessionId },
+      orderBy: { startedAt: 'asc' },
+    });
+
+    const nextQuestion = sessionQuestions.find((q) => !q.startedAt);
+
+    if (!nextQuestion) {
+      // суроолор бүттү
+      await this.finishSession(sessionId);
+      return;
+    }
+
+    await this.prisma.sessionQuestion.update({
+      where: { id: nextQuestion.id },
+      data: { startedAt: new Date() },
+    });
   }
 
   /* ===================== LEADERBOARD ===================== */
