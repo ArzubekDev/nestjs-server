@@ -82,7 +82,8 @@ export class QuizService {
         ? Math.floor(100000 + Math.random() * 900000).toString()
         : crypto.randomUUID().slice(0, 8).toUpperCase();
 
-    const qrCode = `quiz:${code}`;
+    const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const qrCode = `${baseUrl}/codequiz/join?code=${code}`;
 
     const session = await this.prisma.quizSession.create({
       data: {
