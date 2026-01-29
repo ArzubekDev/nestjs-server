@@ -83,7 +83,7 @@ export class QuizService {
         : crypto.randomUUID().slice(0, 8).toUpperCase();
 
     const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const qrCode = `${baseUrl}/ru/codequiz/lobby/${code}`;
+    const qrCode = `${baseUrl}/ru/codequiz/join/${code}`;
 
     const session = await this.prisma.quizSession.create({
       data: {
