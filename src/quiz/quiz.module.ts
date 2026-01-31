@@ -1,3 +1,4 @@
+import { QuizGateway } from './quiz.gateway';
 import { Module } from '@nestjs/common';
 import { QuizService } from './quiz.service';
 import { QuizController } from './quiz.controller';
@@ -13,6 +14,7 @@ import { JwtService } from 'src/config/jwt.service';
   controllers: [QuizController],
   providers: [QuizService, PrismaService, JwtService,
     UserService,
+    QuizGateway,
     AuthGuard,],
 })
 export class QuizModule {}

@@ -1,86 +1,67 @@
-// quiz.gateway.ts
 import {
   WebSocketGateway,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
   WebSocketServer,
+  SubscribeMessage,
   OnGatewayConnection,
-  OnGatewayDisconnect,
+  ConnectedSocket,
+  MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { nanoid } from 'nanoid';
+import { QuizService } from './quiz.service';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { JwtService } from 'src/config/jwt.service';
 
-interface Player {
-  id: string;
-  username: string;
-  score: number;
-}
-
-interface QuizSession {
-  code: string;
-  hostId: string;
-  players: Player[];
-  state: 'WAITING' | 'STARTED' | 'QUESTION' | 'FINISHED';
-  currentQuestionIndex: number;
-}
-
-const sessions: Record<string, QuizSession> = {};
-
-@WebSocketGateway({ cors: true })
-export class QuizGateway implements OnGatewayConnection, OnGatewayDisconnect {
+@WebSocketGateway({
+  cors: {
+    origin: 'http://localhost:3000',
+    credentials: true,
+  },
+})
+export class QuizGateway implements OnGatewayConnection {
   @WebSocketServer()
   server: Server;
 
-  handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly quizService: QuizService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = client.handshake.auth?.token;
+      if (!token) {
+        client.disconnect();
+        return;
+      }
+
+      const payload = this.jwtService.verifyToken(token);
+      client.data.user = payload;
+
+      console.log('WS connected:', client.id);
+    } catch {
+      client.disconnect();
+    }
   }
 
-  handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
-    // Optional: remove from sessions
-  }
-
-  @SubscribeMessage('createLobby')
-  createLobby(
-    @MessageBody() data: { hostId: string },
+  @SubscribeMessage('joinSession')
+  async joinSession(
     @ConnectedSocket() client: Socket,
+    @MessageBody() sessionId: string,
   ) {
-    const code = nanoid(6).toUpperCase();
-    sessions[code] = {
-      code,
-      hostId: client.id,
-      players: [],
-      state: 'WAITING',
-      currentQuestionIndex: 0,
-    };
-    client.join(code);
-    return { code };
-  }
+    const user = client.data.user;
+    if (!user) return;
 
-  @SubscribeMessage('joinLobby')
-  joinLobby(
-    @MessageBody() data: { code: string; username: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const session = sessions[data.code];
-    if (!session) return { error: 'Session not found' };
+    client.join(sessionId);
 
-    const player: Player = { id: client.id, username: data.username, score: 0 };
-    session.players.push(player);
-    client.join(data.code);
+    // 🔹 TEST EMIT
+    this.server.to(sessionId).emit('question:started', {
+      test: true,
+      sessionId,
+    });
 
-    // Notify all players
-    this.server.to(data.code).emit('playerList', session.players);
-    return { success: true };
-  }
-
-  @SubscribeMessage('startGame')
-  startGame(@MessageBody() data: { code: string }) {
-    const session = sessions[data.code];
-    if (!session) return { error: 'Session not found' };
-
-    session.state = 'STARTED';
-    this.server.to(data.code).emit('gameStarted');
+    setTimeout(() => {
+      this.server.to(sessionId).emit('question:ended');
+    }, 5000);
   }
 }

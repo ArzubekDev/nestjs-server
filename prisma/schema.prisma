@@ -123,6 +123,7 @@ model QuizSession {
   startedAt DateTime?
   endedAt   DateTime?
   createdAt DateTime  @default(now())
+  advancing Boolean   @default(false)
 
   category     QuizCategory      @relation(fields: [categoryId], references: [id])
   participants QuizParticipant[]

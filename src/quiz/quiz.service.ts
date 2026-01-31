@@ -13,6 +13,7 @@ import {
 import { CreateSessionDto, StartSessionDto } from './dto/create-session.dto';
 import { shuffle } from 'src/utils/shuffle';
 import { QuizStatus } from '@prisma/client';
+import { CurrentQuestionResponse } from './dto/current-question-response.dto';
 
 @Injectable()
 export class QuizService {
@@ -116,234 +117,289 @@ export class QuizService {
     return session;
   }
 
-  private async getSoloCurrentQuestion(
-  session: any,
-  userId: string,
-) {
-  const participant = session.participants.find(
-    (p) => p.userId === userId,
-  );
-
-  const pointsTotal = participant?.score ?? 0;
-  const totalQuestions = session.questions.length;
-
-  const answers = await this.prisma.quizAnswer.findMany({
-    where: { sessionId: session.id, userId },
-    select: { questionId: true },
-  });
-
-  const answeredCount = answers.length;
-
-  if (session.status === 'FINISHED') {
-    return {
-      finished: true,
-      pointsTotal,
-      totalQuestions,
-      answeredCount,
-      mode: session.mode,
-    };
-  }
-
-  if (session.status !== 'ACTIVE') {
-    throw new BadRequestException('Session активдүү эмес');
-  }
-
-  const answeredIds = new Set(answers.map((a) => a.questionId));
-  const next = session.questions.find(
-    (q) => !answeredIds.has(q.questionId),
-  );
-
-  if (!next) {
-    await this.finishSession(session.id);
-    return {
-      finished: true,
-      pointsTotal,
-      totalQuestions,
-      answeredCount,
-      mode: session.mode,
-    };
-  }
-
-  if (!next.startedAt) {
-    const now = new Date();
-    await this.prisma.sessionQuestion.update({
-      where: { id: next.id },
-      data: { startedAt: now },
+  async getCurrentQuestion(
+    sessionId: string,
+    userId: string,
+  ): Promise<CurrentQuestionResponse> {
+    const session = await this.prisma.quizSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        questions: { include: { question: true } },
+        participants: true,
+      },
     });
-    next.startedAt = now;
+
+    if (!session) {
+      throw new BadRequestException('Session табылган жок');
+    }
+
+    if (session.mode === 'LOBBY') {
+      return this.getLobbyCurrentQuestion(session, userId);
+    }
+
+    return this.getSoloCurrentQuestion(session, userId);
   }
 
-  const deadline =
-    next.startedAt.getTime() +
-    next.question.timer * 1000;
+  private async getSoloCurrentQuestion(
+    session: any,
+    userId: string,
+  ): Promise<CurrentQuestionResponse> {
+    const participant = session.participants.find((p) => p.userId === userId);
 
-  if (Date.now() > deadline) {
-    await this.prisma.quizAnswer.upsert({
+    const pointsTotal = participant?.score ?? 0;
+    const totalQuestions = session.questions.length;
+    let current = session.questions.find((q) => q.isActive);
+
+    const answers = await this.prisma.quizAnswer.findMany({
+      where: { sessionId: session.id, userId },
+      select: { questionId: true },
+    });
+
+    const answeredCount = answers.length;
+
+    // 🟡 SESSION FINISHED
+    if (session.status === 'FINISHED') {
+      return {
+        status: 'FINISHED',
+        pointsTotal,
+        totalQuestions,
+        answeredCount,
+      };
+    }
+
+    // 🟡 SESSION ACTIVE ЭМЕС
+    if (session.status !== 'ACTIVE') {
+      return {
+        status: 'WAITING',
+        answeredCount,
+        totalQuestions,
+      };
+    }
+
+    const answeredIds = new Set(answers.map((a) => a.questionId));
+    const next = session.questions.find((q) => !answeredIds.has(q.questionId));
+
+    // 🟡 СУРООЛОР БҮТТҮ
+    if (!next) {
+      await this.finishSession(session.id);
+
+      return {
+        status: 'FINISHED',
+        pointsTotal,
+        totalQuestions,
+        answeredCount,
+      };
+    }
+
+    // 🟡 СУРОО БАШТАЛА ЭЛЕК
+    if (!next.startedAt) {
+      const now = new Date();
+
+      await this.prisma.sessionQuestion.update({
+        where: { id: next.id },
+        data: { startedAt: now },
+      });
+
+      next.startedAt = now;
+    }
+
+    const expiresAt = next.startedAt.getTime() + next.question.timer * 1000;
+
+    // 🔴 УБАКЫТ БҮТТҮ
+    if (Date.now() > expiresAt) {
+      await this.prisma.quizAnswer.upsert({
+        where: {
+          userId_questionId_sessionId: {
+            userId,
+            questionId: next.questionId,
+            sessionId: session.id,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          sessionId: session.id,
+          questionId: next.questionId,
+          selected: null,
+          isCorrect: false,
+        },
+      });
+
+      return {
+        status: 'EXPIRED',
+        answeredCount: answeredCount + 1,
+        totalQuestions,
+        pointsTotal,
+      };
+    }
+
+    // 🟢 ACTIVE QUESTION
+    return {
+      status: 'ACTIVE',
+      questionId: next.questionId,
+      question: next.question.question,
+      options: next.question.options,
+      level: next.question.level,
+      timer: next.question.timer,
+      expiresAt,
+      serverTime: Date.now(),
+      answeredCount,
+      totalQuestions,
+      pointsTotal,
+      mode: session.mode,
+      participantCount: session.participants.length,
+      correctAnswer: current.question.answer,
+    };
+  }
+
+  private async getLobbyCurrentQuestion(
+    session: any,
+    userId: string,
+  ): Promise<CurrentQuestionResponse> {
+    let current = session.questions.find((q) => q.isActive);
+    const participant = session.participants.find((p) => p.userId === userId);
+
+    // биринчи суроо
+    if (!current) {
+      current = await this.activateFirstQuestion(session.id);
+      if (!current) {
+        throw new BadRequestException('Суроо табылган жок');
+      }
+    }
+
+    const deadline =
+      current.startedAt!.getTime() + current.question.timer * 1000;
+
+    if (session.status === 'WAITING') {
+      return {
+        status: 'WAITING',
+        answeredCount: 0,
+        totalQuestions: session.questionCount,
+      };
+    }
+
+    if (!current) {
+      current = await this.activateFirstQuestion(session.id);
+    }
+
+    if (session.status === 'FINISHED') {
+      const participant = session.participants.find((p) => p.userId === userId);
+      const pointsTotal = participant?.score ?? 0;
+
+      return {
+        status: 'FINISHED',
+        answeredCount: session.questionCount,
+        totalQuestions: session.questionCount,
+        pointsTotal,
+      };
+    }
+
+    const answered = await this.prisma.quizAnswer.findUnique({
       where: {
         userId_questionId_sessionId: {
           userId,
-          questionId: next.questionId,
+          questionId: current.questionId,
           sessionId: session.id,
         },
       },
-      update: {},
-      create: {
-        userId,
-        sessionId: session.id,
-        questionId: next.questionId,
-        selected: null,
-        isCorrect: false,
-      },
     });
 
-    return {
-      expired: true,
-      pointsTotal,
-      totalQuestions,
-      answeredCount: answeredCount + 1,
-      mode: session.mode,
-    };
-  }
+    const answeredCount = await this.prisma.quizAnswer.count({
+      where: { sessionId: session.id, userId },
+    });
 
-  return {
-    questionId: next.questionId,
-    question: next.question.question,
-    options: next.question.options,
-    level: next.question.level,
-    correctAnswer: next.question.answer,
-    timer: next.question.timer,
-    mode: session.mode,
-    pointsTotal,
-    totalQuestions,
-    answeredCount,
-    expiresAt: deadline,
-    serverTime: Date.now(),
-    finished: false,
-  };
-}
+    const pointsTotal = participant?.score ?? 0;
 
+    // ⏱ таймер бүттү
+    if (Date.now() > deadline) {
+      const answeredCountSafe = answered ? answeredCount : answeredCount + 1;
+      await this.finishCurrentAndAdvance(session.id, current.id);
 
-async getCurrentQuestion(sessionId: string, userId: string) {
-  const session = await this.prisma.quizSession.findUnique({
-    where: { id: sessionId },
-    include: {
-      questions: { include: { question: true } },
-      participants: true,
-    },
-  });
-
-  if (!session) {
-    throw new BadRequestException('Session табылган жок');
-  }
-
-  if (session.mode === 'LOBBY') {
-    return this.getLobbyCurrentQuestion(session, userId);
-  }
-
-  return this.getSoloCurrentQuestion(session, userId);
-}
-
-
-private async getLobbyCurrentQuestion(
-  session: any,
-  userId: string,
-) {
-  let current = session.questions.find((q) => q.isActive);
-
-  // биринчи суроо
-  if (!current) {
-    current = await this.activateFirstQuestion(session.id);
-    if (!current) {
-      throw new BadRequestException('Суроо табылган жок');
+      return {
+        status: 'EXPIRED',
+        answeredCount: answeredCountSafe,
+        totalQuestions: session.questionCount,
+        pointsTotal: pointsTotal,
+      };
     }
-  }
-
-  const deadline =
-    current.startedAt!.getTime() +
-    current.question.timer * 1000;
-
-  // ⏱ таймер бүттү
-  if (Date.now() > deadline) {
-    await this.finishCurrentAndAdvance(session.id, current.id);
 
     return {
-      expired: true,
+      status: 'ACTIVE',
+      questionId: current.questionId,
+      question: current.question.question,
+      options: current.question.options,
+      level: current.question.level,
+      timer: current.question.timer,
+      expiresAt: deadline,
+      serverTime: Date.now(),
+      answeredCount,
+      totalQuestions: session.questionCount,
+      pointsTotal,
       mode: session.mode,
+      participantCount: session.participants.length,
+      correctAnswer: current.question.answer,
     };
   }
-
-  const answered = await this.prisma.quizAnswer.findUnique({
-    where: {
-      userId_questionId_sessionId: {
-        userId,
-        questionId: current.questionId,
-        sessionId: session.id,
-      },
-    },
-  });
-
-  return {
-    questionId: current.questionId,
-    question: current.question.question,
-    options: current.question.options,
-    timer: current.question.timer,
-    expiresAt: deadline,
-    serverTime: Date.now(),
-    answered: !!answered,
-    mode: session.mode,
-  };
-}
 
   private async activateFirstQuestion(sessionId: string) {
     const first = await this.prisma.sessionQuestion.findFirst({
       where: { sessionId },
+      include: { question: true },
       orderBy: { id: 'asc' },
     });
 
-    if (!first) return;
+    if (!first) return null;
 
-    await this.prisma.sessionQuestion.update({
+    return this.prisma.sessionQuestion.update({
       where: { id: first.id },
       data: {
         isActive: true,
         startedAt: new Date(),
       },
+      include: { question: true },
     });
   }
 
   private async finishCurrentAndAdvance(sessionId: string, currentId: string) {
     await this.prisma.$transaction(async (tx) => {
+      const session = await tx.quizSession.findUnique({
+        where: { id: sessionId },
+        select: { advancing: true },
+      });
+
+      if (session?.advancing) return;
+
+      await tx.quizSession.update({
+        where: { id: sessionId },
+        data: { advancing: true },
+      });
+
       await tx.sessionQuestion.update({
         where: { id: currentId },
         data: { isActive: false },
       });
 
       const next = await tx.sessionQuestion.findFirst({
-        where: {
-          sessionId,
-          isActive: false,
-          startedAt: null,
-        },
+        where: { sessionId, startedAt: null },
         orderBy: { id: 'asc' },
       });
 
       if (!next) {
         await tx.quizSession.update({
           where: { id: sessionId },
-          data: {
-            status: 'FINISHED',
-            endedAt: new Date(),
-          },
+          data: { status: 'FINISHED', endedAt: new Date(), advancing: false },
         });
         return;
       }
 
       await tx.sessionQuestion.update({
         where: { id: next.id },
-        data: {
-          isActive: true,
-          startedAt: new Date(),
-        },
+        data: { isActive: true, startedAt: new Date() },
+      });
+
+      await tx.quizSession.update({
+        where: { id: sessionId },
+        data: { advancing: false },
       });
     });
   }
@@ -380,6 +436,7 @@ private async getLobbyCurrentQuestion(
     }
 
     await this.attachQuestions(sessionId, session.questionCount);
+    await this.activateFirstQuestion(sessionId);
 
     return this.prisma.quizSession.update({
       where: { id: sessionId },
