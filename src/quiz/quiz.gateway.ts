@@ -13,7 +13,10 @@ import { JwtService } from 'src/config/jwt.service';
 
 @WebSocketGateway({
   cors: {
-    origin: 'http://localhost:3000',
+    origin: [
+      'http://localhost:3000',
+      'https://devarena-neon.vercel.app',
+    ],
     credentials: true,
   },
 })
