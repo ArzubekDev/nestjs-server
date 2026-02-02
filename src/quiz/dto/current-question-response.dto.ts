@@ -21,11 +21,13 @@ export type CurrentQuestionResponse =
       correctAnswer: string;
     }
   | {
-      status: 'EXPIRED';
-      answeredCount: number;
-      totalQuestions: number;
-      pointsTotal: number;
-    }
+    status: "EXPIRED";
+    questionId: string;        // ⭐ кошулду
+    correctAnswer: string;     // ⭐ кошулду
+    answeredCount: number;
+    totalQuestions: number;
+    pointsTotal: number;
+  }
   | {
       status: 'FINISHED';
       pointsTotal: number;

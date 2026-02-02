@@ -148,7 +148,6 @@ export class QuizService {
 
     const pointsTotal = participant?.score ?? 0;
     const totalQuestions = session.questions.length;
-    let current = session.questions.find((q) => q.isActive);
 
     const answers = await this.prisma.quizAnswer.findMany({
       where: { sessionId: session.id, userId },
@@ -227,6 +226,8 @@ export class QuizService {
 
       return {
         status: 'EXPIRED',
+        questionId: next.questionId,
+        correctAnswer: next.question.answer,
         answeredCount: answeredCount + 1,
         totalQuestions,
         pointsTotal,
@@ -248,7 +249,7 @@ export class QuizService {
       pointsTotal,
       mode: session.mode,
       participantCount: session.participants.length,
-      correctAnswer: current.question.answer,
+      correctAnswer: next.question.answer,
     };
   }
 
@@ -313,10 +314,13 @@ export class QuizService {
     // ⏱ таймер бүттү
     if (Date.now() > deadline) {
       const answeredCountSafe = answered ? answeredCount : answeredCount + 1;
+
       await this.finishCurrentAndAdvance(session.id, current.id);
 
       return {
         status: 'EXPIRED',
+        questionId: current.questionId,
+        correctAnswer: current.question.answer,
         answeredCount: answeredCountSafe,
         totalQuestions: session.questionCount,
         pointsTotal: pointsTotal,
