@@ -5,16 +5,22 @@ import { QuizController } from './quiz.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthModule } from 'src/auth/auth.module';
 import { UserModule } from 'src/user/user.module';
-import { UserService } from 'src/user/user.service';
-import { AuthGuard } from 'src/guards/auth.guard';
-import { JwtService } from 'src/config/jwt.service';
+import { GamificationService } from './gamification/gamification.service';
+import { PointsService } from './gamification/points.service';
+import { LevelService } from './gamification/level.service';
+import { SoloModeModule } from './mode/solo.module';
+import { LobbyModeModule } from './mode/lobby.module';
 
 @Module({
-   imports: [AuthModule, UserModule],
+  imports: [AuthModule, UserModule, SoloModeModule, LobbyModeModule],
   controllers: [QuizController],
-  providers: [QuizService, PrismaService, JwtService,
-    UserService,
+  providers: [
+    QuizService,
     QuizGateway,
-    AuthGuard,],
+    PrismaService,
+    GamificationService,
+    PointsService,
+    LevelService,
+  ],
 })
 export class QuizModule {}

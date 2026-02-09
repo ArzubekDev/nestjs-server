@@ -1,4 +1,13 @@
-import { Controller, Post, Body, Get, Query, Param, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Query,
+  Param,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { QuizService } from './quiz.service';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import {
@@ -13,17 +22,124 @@ import { JwtService } from 'src/config/jwt.service';
 import { UserService } from 'src/user/user.service';
 import { Public } from 'src/common/public.decorator';
 import { AuthGuard } from 'src/guards/auth.guard';
+import { SoloModeService } from './mode/solo.mode';
+import { LobbyModeService } from './mode/lobby.mode';
 
+// @Controller('quiz')
+// export class QuizController {
+//   constructor(
+//     private readonly quizService: QuizService,
+//     private readonly jwtService: JwtService,
+//     private readonly userService: UserService,
+//   ) {}
+
+//   // Category
+//   @Public()
+//   @Post('category')
+//   createCategory(@Body() dto: CreateCategoryDto) {
+//     return this.quizService.createCategory(dto);
+//   }
+
+//   @Public()
+//   @Get('category')
+//   findAllCategory() {
+//     return this.quizService.findAllCategories();
+//   }
+
+//   // Question
+//   @Public()
+//   @Post('question')
+//   createQuestion(@Body() dto: CreateQuizDto) {
+//     return this.quizService.createQuestion(dto);
+//   }
+
+//   @Public()
+//   @Get('question')
+//   findQuestion(@Query() query: GetQuestionsQueryDto) {
+//     return this.quizService.getQuestionsByCategory(query);
+//   }
+
+//   @Authorization()
+//   @Get('session/:id/current-question')
+//   getCurrentQuestion(
+//     @Param('id') sessionId: string,
+//     @Authorized('id') userId: string,
+//   ) {
+//     return this.quizService.getCurrentQuestion(sessionId, userId);
+//   }
+
+//   // SubmitAnswer
+//   @Authorization()
+//   @Post('answer')
+//   submit(@Authorized('id') userId: string, @Body() dto: SubmitAnswerDto) {
+//     return this.quizService.submitAnswer(userId, dto);
+//   }
+
+//   // CREATE SESSION (SOLO / LOBBY)
+//   @Authorization()
+//   @Post('session')
+//   createSession(
+//     @Authorized('id') userId: string,
+//     @Body() dto: CreateSessionDto,
+//   ) {
+//     return this.quizService.createSession(userId, dto);
+//   }
+
+//   // GetSession
+//   @Public()
+//   @Get('session/:id')
+//   getSessionById(@Param('id') id: string) {
+//     return this.quizService.getSessionById(id);
+//   }
+
+//   @Public()
+//   @Get('session/code/:code')
+//   getSessionByCode(@Param('code') code: string) {
+//     return this.quizService.getSessionByCode(code);
+//   }
+
+//   @Authorization()
+//   @Post('session/code/:code/join')
+//   joinSessionByCode(
+//     @Param('code') code: string,
+//     @Authorized('id') userId: string,
+//   ) {
+//     return this.quizService.joinSessionByCode(code, userId);
+//   }
+
+//   // START LOBBY SESSION
+//   @Authorization()
+//   @Post('session/:id/start')
+//   startSession(
+//     @Param('id') sessionId: string,
+//     @Authorized('id') userId: string,
+//   ) {
+//     return this.quizService.startSession(sessionId, userId);
+//   }
+
+//   // getCurrentLeaderboard
+//   @Public()
+//   @Get('session/:id/leaderboard')
+//   async getCurrentLeaderboard(@Param('id') sessionId: string) {
+//     return this.quizService.getLeaderboard(sessionId);
+//   }
+
+//   @Get('session/:id/scoreboard')
+//   getScoreboard(@Param('id') sessionId: string) {
+//     return this.quizService.getScoreboard(sessionId);
+//   }
+// }
+
+@UseGuards(AuthGuard)
 @Controller('quiz')
 export class QuizController {
   constructor(
-    private readonly quizService: QuizService,
-    private readonly jwtService: JwtService,
-    private readonly userService: UserService,
+    private quizService: QuizService, 
+    private soloMode: SoloModeService,
+    private lobbyMode: LobbyModeService,
   ) {}
 
-  // Category
-  @Public()
+    @Public()
   @Post('category')
   createCategory(@Body() dto: CreateCategoryDto) {
     return this.quizService.createCategory(dto);
@@ -35,105 +151,47 @@ export class QuizController {
     return this.quizService.findAllCategories();
   }
 
-  // Question
-  @Public()
-  @Post('question')
-  createQuestion(@Body() dto: CreateQuizDto) {
-    return this.quizService.createQuestion(dto);
-  }
-
-  @Public()
-  @Get('question')
-  findQuestion(@Query() query: GetQuestionsQueryDto) {
-    return this.quizService.getQuestionsByCategory(query);
-  }
-
-  @Authorization()
-  @Get('session/:id/current-question')
-  getCurrentQuestion(
-    @Param('id') sessionId: string,
-    @Authorized('id') userId: string,
+  @Get('current')
+  async getCurrent(
+    @Req() req,
+    @Query('sessionId') sessionId: string,
   ) {
-    return this.quizService.getCurrentQuestion(sessionId, userId);
+    const userId = req.user.id;
+
+    const session = await this.quizService.getSessionWithRelations(sessionId);
+
+    if (session.mode === 'SOLO') {
+      return this.soloMode.getCurrentQuestion(session, userId);
+    }
+
+    return this.lobbyMode.getCurrentQuestion(session, userId);
   }
 
-  // SubmitAnswer
-  @Authorization()
   @Post('answer')
-  submit(@Authorized('id') userId: string, @Body() dto: SubmitAnswerDto) {
-    return this.quizService.submitAnswer(userId, dto);
-  }
-
-  // CREATE SESSION (SOLO / LOBBY)
-  @Authorization()
-  @Post('session')
-  createSession(
-    @Authorized('id') userId: string,
-    @Body() dto: CreateSessionDto,
+  async submitAnswer(
+    @Req() req,
+    @Body() dto: SubmitAnswerDto,
   ) {
-    return this.quizService.createSession(userId, dto);
+    const userId = req.user.id;
+
+    const session = await this.quizService.getSessionWithRelations(
+      dto.sessionId,
+    );
+
+    if (session.mode === 'SOLO') {
+      return this.soloMode.submitAnswer(userId, dto, session);
+    }
+
+    return this.lobbyMode.submitAnswer(userId, dto, session);
   }
 
-  // GetSession
-  @Public()
-  @Get('session/:id')
-  getSessionById(@Param('id') id: string) {
-    return this.quizService.getSessionById(id);
+  @Post('start')
+  async startSession(@Body('sessionId') sessionId: string) {
+    return this.quizService.startSession(sessionId);
   }
 
-  @Public()
-@Get('session/code/:code')
-getSessionByCode(@Param('code') code: string) {
-  return this.quizService.getSessionByCode(code);
-}
-
-@Authorization()
-@Post('session/code/:code/join')
-joinSessionByCode(
-  @Param('code') code: string,
-  @Authorized('id') userId: string,
-) {
-  return this.quizService.joinSessionByCode(code, userId);
-}
-
-  // START LOBBY SESSION
-  @Authorization()
-  @Post('session/:id/start')
-  @UseGuards(AuthGuard)
-  startSession(
-    @Param('id') sessionId: string,
-    @Authorized('id') userId: string,
-  ) {
-    return this.quizService.startSession(sessionId, userId);
+  @Get('results')
+  async getResults(@Query('sessionId') sessionId: string) {
+    return this.quizService.getResults(sessionId);
   }
-
-  // getCurrentLeaderboard
-  @Public()
-  @Authorization()
-  @Get('session/:id/leaderboard')
-  async getCurrentLeaderboard(@Param('id') sessionId: string) {
-    return this.quizService.getLeaderboard(sessionId);
-  }
-
-  @Get('session/:id/scoreboard')
-getScoreboard(@Param('id') sessionId: string) {
-  return this.quizService.getScoreboard(sessionId);
-}
-
-  // @Authorization()
-  // @Get('session/:id/leaderboard')
-  // async getCurrentLeaderboard(
-  //   @Param('id') sessionId: string,
-  //   @Authorized('quiz/leaderboard') userId: string,
-  // ): Promise<
-  //   {
-  //     rank: number;
-  //     userId: string;
-  //     name: string;
-  //     picture: string | null;
-  //     score: number;
-  //   }[]
-  // > {
-  //   return this.quizService.getLeaderboard(sessionId);
-  // }
 }

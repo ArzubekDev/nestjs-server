@@ -11,6 +11,7 @@ import { QuizModule } from './quiz/quiz.module';
 import { AuthGuard } from './guards/auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { LeaderboardModule } from './leaderboard/leaderboard.module';
+import {ScheduleModule} from "@nestjs/schedule"
 
 @Module({
   imports: [

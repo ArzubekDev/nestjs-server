@@ -13,10 +13,7 @@ import { JwtService } from 'src/config/jwt.service';
 
 @WebSocketGateway({
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'https://devarena-neon.vercel.app',
-    ],
+    origin: ['http://localhost:3000', 'https://devarena-neon.vercel.app'],
     credentials: true,
   },
 })
@@ -26,7 +23,6 @@ export class QuizGateway implements OnGatewayConnection {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly quizService: QuizService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -66,5 +62,15 @@ export class QuizGateway implements OnGatewayConnection {
     setTimeout(() => {
       this.server.to(sessionId).emit('question:ended');
     }, 5000);
+  }
+  quizFinished(sessionId: string) {
+    this.server.to(sessionId).emit('quiz:finished');
+  }
+  questionStarted(sessionId: string) {
+    this.server.to(sessionId).emit('question:started');
+  }
+
+  questionEnded(sessionId: string) {
+    this.server.to(sessionId).emit('question:ended');
   }
 }
